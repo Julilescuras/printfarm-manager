@@ -21,7 +21,6 @@ chmod +x install.sh
 
 El script automáticamente:
 - Instala Docker y Docker Compose si no están presentes
-- Te pide editar las IPs de las impresoras
 - Construye las imágenes Docker
 - Levanta todos los servicios
 
@@ -34,19 +33,11 @@ El script automáticamente:
 | API Docs (Swagger) | `http://tu-ip:8000/docs` | 8000 |
 | Spoolman | `http://tu-ip:7912` | 7912 |
 
-## Configuración
+## Configuración de Impresoras
 
-Editá el archivo `.env` con las IPs de tus impresoras:
+A diferencia de versiones anteriores, **las impresoras ya no se configuran mediante archivos .env**. 
 
-```env
-PRINTERS_CONFIG='[
-  {"name": "Ender3-01", "model": "Ender 3 V2 Neo", "url": "http://192.168.1.100:7125", "nozzle": 0.4},
-  {"name": "Ender3-02", "model": "Ender 3 V2 Neo", "url": "http://192.168.1.100:7126", "nozzle": 0.4},
-  ...
-]'
-```
-
-> **Nota:** El Sonic Pad expone cada impresora en un puerto distinto (7125, 7126, 7127, 7128) desde la misma IP.
+Una vez que el sistema esté corriendo, simplemente abre el **Frontend** (`http://tu-ip:3000`), dirígete a la pestaña de **Impresoras** y utiliza la interfaz web para añadir, editar o eliminar las máquinas de tu granja. El sistema las conectará automáticamente.
 
 ## Comandos Útiles
 
