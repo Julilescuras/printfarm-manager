@@ -68,23 +68,9 @@ if [ ! -f .env ]; then
     cp .env.example .env
     echo -e "  ${GREEN}✓${NC} Archivo .env creado desde .env.example"
     echo ""
-    echo -e "  ${YELLOW}╔══════════════════════════════════════════════════════╗${NC}"
-    echo -e "  ${YELLOW}║  ⚠️  IMPORTANTE: Editá el archivo .env con las IPs  ║${NC}"
-    echo -e "  ${YELLOW}║  reales de tus impresoras antes de continuar.       ║${NC}"
-    echo -e "  ${YELLOW}║                                                      ║${NC}"
-    echo -e "  ${YELLOW}║  Comando:  nano .env                                ║${NC}"
-    echo -e "  ${YELLOW}╚══════════════════════════════════════════════════════╝${NC}"
+    echo -e "  ${BLUE}ℹ️  Las impresoras se configuran desde la interfaz web${NC}"
+    echo -e "  ${BLUE}   después de la instalación (http://tu-ip:3000/printers)${NC}"
     echo ""
-    read -p "  ¿Querés editar el .env ahora? [S/n]: " edit_env
-    if [[ "$edit_env" != "n" && "$edit_env" != "N" ]]; then
-        if command -v nano &> /dev/null; then
-            nano .env
-        elif command -v vi &> /dev/null; then
-            vi .env
-        else
-            echo -e "  ${YELLOW}⚠${NC} No se encontró editor. Editá .env manualmente."
-        fi
-    fi
 else
     echo -e "  ${GREEN}✓${NC} Archivo .env ya existe"
 fi
