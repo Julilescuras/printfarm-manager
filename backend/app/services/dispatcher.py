@@ -10,11 +10,13 @@ Matching logic:
 2. Job's required_nozzle must match the printer's nozzle_size
 3. Job's required_material must match the loaded spool's material
 4. Job's required_color (if set) must match the loaded spool's color
+5. Job's estimated_weight_g must not exceed the spool's remaining_weight
 """
 
 import json
 import logging
 import os
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import select, and_
@@ -22,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session
 from app.models.printer import Printer
-from app.models.print_job import PrintJob
+from app.models.print_job import PrintJob, PrintHistory
 from app.services.moonraker import moonraker_manager
 from app.services.spoolman import spoolman_client
 
@@ -55,11 +57,13 @@ class Dispatcher:
             # Get the loaded spool info from Spoolman
             spool_material = None
             spool_color = None
+            spool_remaining = None
             if printer.current_spool_id:
                 spool_info = await spoolman_client.get_spool_info(printer.current_spool_id)
                 if spool_info:
                     spool_material = spool_info.get("material", "").upper()
                     spool_color = spool_info.get("color_hex", "")
+                    spool_remaining = spool_info.get("remaining_weight")
 
             # Find matching pending jobs, ordered by priority DESC, then created_at ASC
             result = await session.execute(
@@ -75,7 +79,7 @@ class Dispatcher:
             pending_jobs = result.scalars().all()
 
             for job in pending_jobs:
-                if self._is_compatible(job, printer, spool_material, spool_color):
+                if self._is_compatible(job, printer, spool_material, spool_color, spool_remaining):
                     success = await self._dispatch_job(session, job, printer)
                     if success:
                         return True
@@ -89,6 +93,7 @@ class Dispatcher:
         printer: Printer,
         spool_material: Optional[str],
         spool_color: Optional[str],
+        spool_remaining: Optional[float],
     ) -> bool:
         """Check if a job is compatible with a printer's current configuration."""
 
@@ -113,6 +118,19 @@ class Dispatcher:
         # 4. Check color (if specified and spool info available)
         if job.required_color and spool_color:
             if job.required_color.lower() != spool_color.lower():
+                return False
+
+        # 5. Check filament remaining weight
+        if (
+            job.estimated_weight_g
+            and spool_remaining is not None
+            and spool_remaining > 0
+        ):
+            if job.estimated_weight_g > spool_remaining:
+                logger.info(
+                    f"Job '{job.name}' needs {job.estimated_weight_g:.0f}g but spool "
+                    f"only has {spool_remaining:.0f}g remaining — skipping"
+                )
                 return False
 
         return True
@@ -166,8 +184,8 @@ class Dispatcher:
 
     async def on_print_complete(self, printer_id: int):
         """
-        Called when a print completes. Updates the job record and
-        checks if more copies are needed.
+        Called when a print completes. Updates the job record,
+        creates a history entry, and checks if more copies are needed.
         """
         async with async_session() as session:
             # Find the active job on this printer
@@ -181,8 +199,30 @@ class Dispatcher:
             )
             job = result.scalar_one_or_none()
 
+            # Get printer info for the history record
+            result = await session.execute(
+                select(Printer).where(Printer.id == printer_id)
+            )
+            printer = result.scalar_one_or_none()
+
             if job:
                 job.copies_completed += 1
+
+                # Create history entry
+                history = PrintHistory(
+                    print_job_id=job.id,
+                    printer_id=printer_id,
+                    printer_name=printer.name if printer else "",
+                    job_name=job.name,
+                    gcode_filename=job.gcode_original_name,
+                    material=job.required_material,
+                    estimated_weight_g=job.estimated_weight_g,
+                    completed_at=datetime.now(timezone.utc),
+                    duration_secs=printer.total_print_time_secs if printer else None,
+                    result="success",
+                )
+                session.add(history)
+
                 if job.copies_completed >= job.copies:
                     job.status = "completed"
                     logger.info(f"Job '{job.name}' completed all {job.copies} copies")

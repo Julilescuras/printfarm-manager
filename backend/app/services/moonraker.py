@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session
 from app.models.printer import Printer
+from app.services.telegram import telegram_notifier
 
 logger = logging.getLogger("printfarm.moonraker")
 
@@ -202,12 +203,20 @@ class MoonrakerClient:
                         logger.info(
                             f"[Printer {self.printer_id}] Print COMPLETE → requires_clearance"
                         )
+                        # Send Telegram notification
+                        asyncio.create_task(
+                            self._notify_print_complete()
+                        )
                 elif new_state == "standby":
                     # Only set standby if we weren't in requires_clearance
                     if old_state != "complete":
                         updates["status"] = "standby"
                 elif new_state == "error":
                     updates["status"] = "error"
+                    if old_state != "error":
+                        asyncio.create_task(
+                            self._notify_printer_error()
+                        )
 
                 self._last_state = new_state
 
@@ -235,6 +244,37 @@ class MoonrakerClient:
                     # Notify the WebSocket hub of state changes
                     if self.on_state_change:
                         await self.on_state_change(printer.to_dict())
+
+    # --- Telegram notification helpers ---
+
+    async def _notify_print_complete(self):
+        """Send Telegram notification for print completion."""
+        try:
+            async with async_session() as session:
+                result = await session.execute(
+                    select(Printer).where(Printer.id == self.printer_id)
+                )
+                printer = result.scalar_one_or_none()
+                if printer:
+                    job_name = printer.current_filename or "Archivo desconocido"
+                    await telegram_notifier.notify_print_complete(
+                        printer.name, job_name
+                    )
+        except Exception as e:
+            logger.error(f"Error sending Telegram notification: {e}")
+
+    async def _notify_printer_error(self):
+        """Send Telegram notification for printer error."""
+        try:
+            async with async_session() as session:
+                result = await session.execute(
+                    select(Printer).where(Printer.id == self.printer_id)
+                )
+                printer = result.scalar_one_or_none()
+                if printer:
+                    await telegram_notifier.notify_printer_error(printer.name)
+        except Exception as e:
+            logger.error(f"Error sending Telegram notification: {e}")
 
     # --- HTTP API methods for file operations and print control ---
 

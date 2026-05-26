@@ -23,8 +23,10 @@ from app.database import init_db, async_session
 from app.models.printer import Printer
 from app.models.maintenance import MaintenanceRecord
 from app.routers import printers, print_queue, maintenance, spoolman
+from app.routers import settings_router
 from app.services.moonraker import moonraker_manager
 from app.services.monitor import monitor
+from app.services.reporter import weekly_reporter
 from app.ws.hub import ws_hub
 
 # Configure logging
@@ -131,12 +133,17 @@ async def lifespan(app: FastAPI):
     await monitor.start()
     logger.info("✅ Maintenance monitor started")
 
+    # 6. Start weekly reporter
+    await weekly_reporter.start()
+    logger.info("✅ Weekly reporter started")
+
     logger.info("🟢 PrintFarm Manager is ready!")
 
     yield  # App is running
 
     # Shutdown
     logger.info("🔴 PrintFarm Manager shutting down...")
+    await weekly_reporter.stop()
     await monitor.stop()
     await moonraker_manager.disconnect_all()
     logger.info("👋 Goodbye!")
@@ -177,6 +184,7 @@ app.include_router(printers.router)
 app.include_router(print_queue.router)
 app.include_router(maintenance.router)
 app.include_router(spoolman.router)
+app.include_router(settings_router.router)
 
 
 # WebSocket endpoint for frontend

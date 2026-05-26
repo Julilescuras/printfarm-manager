@@ -12,6 +12,12 @@ import {
   Trash2,
   FileCode,
   Pencil,
+  GripVertical,
+  Clock,
+  Weight,
+  CheckCircle,
+  XCircle,
+  History,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { PrintJob } from "@/lib/types";
@@ -27,8 +33,23 @@ const STATUS_LABELS: Record<string, string> = {
 const MATERIALS = ["PLA", "PETG", "ABS", "TPU", "ASA", "Nylon"];
 const NOZZLES = [0.2, 0.4, 0.6, 0.8];
 
+function formatDuration(secs: number | null | undefined): string {
+  if (!secs) return "-";
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+function formatWeight(g: number | null | undefined): string {
+  if (!g) return "-";
+  if (g >= 1000) return `${(g / 1000).toFixed(2)} kg`;
+  return `${g.toFixed(0)}g`;
+}
+
 export default function QueuePage() {
   const [jobs, setJobs] = useState<PrintJob[]>([]);
+  const [history, setHistory] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<string>("pending");
   const [showForm, setShowForm] = useState(false);
   const [editingJob, setEditingJob] = useState<PrintJob | null>(null);
@@ -39,8 +60,13 @@ export default function QueuePage() {
 
   const fetchJobs = useCallback(async () => {
     try {
-      const data = await api.getQueue(activeTab !== "all" ? activeTab : undefined);
-      setJobs(data);
+      if (activeTab === "history") {
+        const data = await api.getHistory(100);
+        setHistory(data);
+      } else {
+        const data = await api.getQueue(activeTab !== "all" ? activeTab : undefined);
+        setJobs(data);
+      }
     } catch (error) {
       console.error("Error fetching queue:", error);
     } finally {
@@ -92,11 +118,25 @@ export default function QueuePage() {
     }
   };
 
+  const handleReorder = async (reorderedJobs: PrintJob[]) => {
+    // Assign descending priorities based on visual order
+    const items = reorderedJobs.map((job, index) => ({
+      id: job.id,
+      priority: reorderedJobs.length - index,
+    }));
+    try {
+      await api.reorderQueue(items);
+    } catch (error) {
+      console.error("Error reordering queue:", error);
+    }
+  };
+
   const tabs = [
     { key: "pending", label: "Pendientes" },
     { key: "printing", label: "En Impresión" },
     { key: "completed", label: "Completados" },
     { key: "cancelled", label: "Cancelados" },
+    { key: "history", label: "Historial", icon: History },
   ];
 
   return (
@@ -124,39 +164,56 @@ export default function QueuePage() {
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-all ${
               activeTab === tab.key
                 ? "bg-card text-foreground shadow-md"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
+            {tab.icon && <tab.icon className="w-3.5 h-3.5" />}
             {tab.label}
           </button>
         ))}
       </div>
 
-      {/* Job List */}
-      <div className="space-y-3">
-        {jobs.map((job) => (
-          <JobCard
-            key={job.id}
-            job={job}
-            filaments={filaments}
-            onEdit={() => setEditingJob(job)}
-            onCancel={handleCancel}
-            onRequeue={handleRequeue}
-          />
-        ))}
-        {jobs.length === 0 && !isLoading && (
-          <div className="glass-card p-12 text-center">
-            <div className="text-4xl mb-3">📋</div>
-            <p className="text-muted-foreground">
-              No hay trabajos{" "}
-              {activeTab === "pending" ? "pendientes" : `con estado "${activeTab}"`}
-            </p>
-          </div>
-        )}
-      </div>
+      {/* History Tab */}
+      {activeTab === "history" ? (
+        <HistoryTable history={history} />
+      ) : (
+        /* Job List */
+        <div className="space-y-3">
+          {activeTab === "pending" ? (
+            <DragDropJobList
+              jobs={jobs}
+              filaments={filaments}
+              onEdit={(job) => setEditingJob(job)}
+              onCancel={handleCancel}
+              onRequeue={handleRequeue}
+              onReorder={handleReorder}
+            />
+          ) : (
+            jobs.map((job) => (
+              <JobCard
+                key={job.id}
+                job={job}
+                filaments={filaments}
+                onEdit={() => setEditingJob(job)}
+                onCancel={handleCancel}
+                onRequeue={handleRequeue}
+              />
+            ))
+          )}
+          {jobs.length === 0 && !isLoading && activeTab !== "history" && (
+            <div className="glass-card p-12 text-center">
+              <div className="text-4xl mb-3">📋</div>
+              <p className="text-muted-foreground">
+                No hay trabajos{" "}
+                {activeTab === "pending" ? "pendientes" : `con estado "${activeTab}"`}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Add Job Modal */}
       {showForm && (
@@ -185,18 +242,180 @@ export default function QueuePage() {
   );
 }
 
+// ─── History Table ───
+function HistoryTable({ history }: { history: any[] }) {
+  if (history.length === 0) {
+    return (
+      <div className="glass-card p-12 text-center">
+        <div className="text-4xl mb-3">📊</div>
+        <p className="text-muted-foreground">
+          No hay registros de impresiones anteriores
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="glass-card overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border text-left text-muted-foreground">
+              <th className="p-3 font-medium">Trabajo</th>
+              <th className="p-3 font-medium">Impresora</th>
+              <th className="p-3 font-medium">Material</th>
+              <th className="p-3 font-medium">Filamento</th>
+              <th className="p-3 font-medium">Duración</th>
+              <th className="p-3 font-medium">Fecha</th>
+              <th className="p-3 font-medium">Resultado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {history.map((entry) => (
+              <tr key={entry.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
+                <td className="p-3 font-medium">{entry.job_name || entry.gcode_filename}</td>
+                <td className="p-3 text-muted-foreground">{entry.printer_name || `#${entry.printer_id}`}</td>
+                <td className="p-3 text-muted-foreground">{entry.material || "-"}</td>
+                <td className="p-3 text-muted-foreground">{formatWeight(entry.estimated_weight_g)}</td>
+                <td className="p-3 text-muted-foreground">{formatDuration(entry.duration_secs)}</td>
+                <td className="p-3 text-muted-foreground">
+                  {entry.completed_at
+                    ? new Date(entry.completed_at).toLocaleDateString("es-AR", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : "-"}
+                </td>
+                <td className="p-3">
+                  {entry.result === "success" ? (
+                    <span className="inline-flex items-center gap-1 text-green-400">
+                      <CheckCircle className="w-3.5 h-3.5" /> Éxito
+                    </span>
+                  ) : entry.result === "failed" ? (
+                    <span className="inline-flex items-center gap-1 text-red-400">
+                      <XCircle className="w-3.5 h-3.5" /> Fallido
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">{entry.result}</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+
+// ─── Drag & Drop Job List ───
+function DragDropJobList({
+  jobs,
+  filaments,
+  onEdit,
+  onCancel,
+  onRequeue,
+  onReorder,
+}: {
+  jobs: PrintJob[];
+  filaments: any[];
+  onEdit: (job: PrintJob) => void;
+  onCancel: (id: number) => void;
+  onRequeue: (id: number) => void;
+  onReorder: (jobs: PrintJob[]) => void;
+}) {
+  const [localJobs, setLocalJobs] = useState(jobs);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [overIndex, setOverIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    setLocalJobs(jobs);
+  }, [jobs]);
+
+  const handleDragStart = (index: number) => {
+    setDragIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    setOverIndex(index);
+  };
+
+  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    if (dragIndex === null || dragIndex === dropIndex) {
+      setDragIndex(null);
+      setOverIndex(null);
+      return;
+    }
+
+    const reordered = [...localJobs];
+    const [moved] = reordered.splice(dragIndex, 1);
+    reordered.splice(dropIndex, 0, moved);
+    setLocalJobs(reordered);
+    setDragIndex(null);
+    setOverIndex(null);
+    onReorder(reordered);
+  };
+
+  const handleDragEnd = () => {
+    setDragIndex(null);
+    setOverIndex(null);
+  };
+
+  if (localJobs.length === 0) return null;
+
+  return (
+    <div className="space-y-1">
+      {localJobs.map((job, index) => (
+        <div
+          key={job.id}
+          draggable
+          onDragStart={() => handleDragStart(index)}
+          onDragOver={(e) => handleDragOver(e, index)}
+          onDrop={(e) => handleDrop(e, index)}
+          onDragEnd={handleDragEnd}
+          className={`transition-all duration-150 ${
+            dragIndex === index ? "opacity-40 scale-[0.98]" : ""
+          } ${
+            overIndex === index && dragIndex !== index
+              ? "border-t-2 border-primary"
+              : ""
+          }`}
+        >
+          <JobCard
+            job={job}
+            filaments={filaments}
+            onEdit={() => onEdit(job)}
+            onCancel={onCancel}
+            onRequeue={onRequeue}
+            showGrip
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+
+// ─── Job Card ───
 function JobCard({
   job,
   filaments,
   onEdit,
   onCancel,
   onRequeue,
+  showGrip = false,
 }: {
   job: PrintJob;
   filaments: any[];
   onEdit: () => void;
   onCancel: (id: number) => void;
   onRequeue: (id: number) => void;
+  showGrip?: boolean;
 }) {
   let models: string[] = [];
   try {
@@ -214,6 +433,13 @@ function JobCard({
 
   return (
     <div className="glass-card p-4 flex items-center gap-4">
+      {/* Drag grip */}
+      {showGrip && (
+        <div className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors">
+          <GripVertical className="w-5 h-5" />
+        </div>
+      )}
+
       {/* Priority indicator */}
       <div className="flex flex-col items-center gap-1 text-xs text-muted-foreground">
         <ArrowUp className="w-3 h-3" />
@@ -256,6 +482,20 @@ function JobCard({
             <span className="flex items-center gap-1">
               <Printer className="w-3 h-3" />
               {models.join(", ")}
+            </span>
+          )}
+          {/* Estimated time */}
+          {(job as any).estimated_time_secs && (
+            <span className="flex items-center gap-1 text-blue-400">
+              <Clock className="w-3 h-3" />
+              ~{formatDuration((job as any).estimated_time_secs)}
+            </span>
+          )}
+          {/* Estimated weight */}
+          {(job as any).estimated_weight_g && (
+            <span className="flex items-center gap-1 text-amber-400">
+              <Weight className="w-3 h-3" />
+              ~{formatWeight((job as any).estimated_weight_g)}
             </span>
           )}
         </div>

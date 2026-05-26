@@ -42,6 +42,8 @@ export interface PrintJob {
   required_nozzle: number;
   required_material: string;
   required_color: string | null;
+  estimated_time_secs: number | null;
+  estimated_weight_g: number | null;
   copies: number;
   copies_completed: number;
   priority: number;

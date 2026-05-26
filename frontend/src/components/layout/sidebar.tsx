@@ -8,6 +8,7 @@ import {
   Palette,
   Wrench,
   Printer,
+  Settings,
   Wifi,
   WifiOff,
 } from "lucide-react";
@@ -20,6 +21,7 @@ const navItems = [
   { href: "/printers", label: "Impresoras", icon: Printer },
   { href: "/filament", label: "Filamento", icon: Palette },
   { href: "/maintenance", label: "Mantenimiento", icon: Wrench },
+  { href: "/settings", label: "Configuración", icon: Settings },
 ];
 
 export function Sidebar() {

@@ -13,6 +13,7 @@ from app.database import async_session
 from app.models.printer import Printer
 from app.models.maintenance import MaintenanceRecord
 from app.config import settings
+from app.services.telegram import telegram_notifier
 
 logger = logging.getLogger("printfarm.monitor")
 
@@ -84,6 +85,14 @@ class Monitor:
                             f"⚠️ MAINTENANCE ALERT: {printer.name} — "
                             f"{record.maintenance_type} at {accumulated_hours:.1f}h "
                             f"(threshold: {record.threshold_hours:.1f}h)"
+                        )
+                        # Send Telegram notification
+                        asyncio.create_task(
+                            telegram_notifier.notify_maintenance_alert(
+                                printer.name,
+                                record.maintenance_type,
+                                accumulated_hours,
+                            )
                         )
 
                 await session.commit()

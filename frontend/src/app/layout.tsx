@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { WebSocketProvider } from "@/providers/websocket-provider";
+import { ThemeProvider } from "@/providers/theme-provider";
 import { Sidebar } from "@/components/layout/sidebar";
 
 export const metadata: Metadata = {
@@ -15,16 +16,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="es" className="dark">
+    <html lang="es" className="dark" suppressHydrationWarning>
       <body className="min-h-screen overflow-hidden">
-        <WebSocketProvider>
-          <div className="flex h-screen">
-            <Sidebar />
-            <main className="flex-1 overflow-y-auto custom-scrollbar">
-              <div className="p-6 lg:p-8">{children}</div>
-            </main>
-          </div>
-        </WebSocketProvider>
+        <ThemeProvider>
+          <WebSocketProvider>
+            <div className="flex h-screen">
+              <Sidebar />
+              <main className="flex-1 overflow-y-auto custom-scrollbar">
+                <div className="p-6 lg:p-8">{children}</div>
+              </main>
+            </div>
+          </WebSocketProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

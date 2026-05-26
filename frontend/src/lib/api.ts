@@ -60,6 +60,8 @@ export const api = {
   // Queue
   getQueue: (status?: string) =>
     apiFetch<any[]>(`/api/queue${status ? `?status=${status}` : ""}`),
+  getHistory: (limit: number = 100) =>
+    apiFetch<any[]>(`/api/queue/history?limit=${limit}`),
   addJob: (formData: FormData) =>
     apiFetch<any>("/api/queue", {
       method: "POST",
@@ -75,6 +77,12 @@ export const api = {
     apiFetch<void>(`/api/queue/${id}`, { method: "DELETE" }),
   requeueJob: (id: number) =>
     apiFetch<any>(`/api/queue/${id}/requeue`, { method: "POST" }),
+  reorderQueue: (items: { id: number; priority: number }[]) =>
+    apiFetch<any>("/api/queue/reorder", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(items),
+    }),
 
   // Maintenance
   getMaintenance: () => apiFetch<any[]>("/api/maintenance"),
@@ -109,6 +117,17 @@ export const api = {
   getSpools: () => apiFetch<any[]>("/api/spoolman/spools"),
   getSpool: (id: number) => apiFetch<any>(`/api/spoolman/spools/${id}`),
   getFilaments: () => apiFetch<any[]>("/api/spoolman/filaments"),
+
+  // Settings
+  getSettings: () => apiFetch<Record<string, string>>("/api/settings"),
+  updateSettings: (settings: Record<string, string>) =>
+    apiFetch<any>("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ settings }),
+    }),
+  testTelegram: () =>
+    apiFetch<any>("/api/settings/telegram/test", { method: "POST" }),
 
   // System
   getSystemStatus: () => apiFetch<any>("/api/status"),

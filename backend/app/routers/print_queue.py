@@ -14,10 +14,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models.print_job import PrintJob
-from app.schemas.print_job import PrintJobResponse
+from app.models.print_job import PrintJob, PrintHistory
+from app.schemas.print_job import PrintJobResponse, PrintJobUpdate, PrintHistoryResponse
 from app.config import settings
 from app.ws.hub import ws_hub
+from app.services.gcode_parser import parse_gcode
 
 router = APIRouter(prefix="/api/queue", tags=["queue"])
 
@@ -62,6 +63,20 @@ async def list_queue(
     return result.scalars().all()
 
 
+@router.get("/history", response_model=List[PrintHistoryResponse])
+async def get_history(
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get print history with enriched data."""
+    result = await db.execute(
+        select(PrintHistory)
+        .order_by(PrintHistory.completed_at.desc())
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
 @router.post("", response_model=PrintJobResponse, status_code=201)
 async def add_job(
     name: str = Form(...),
@@ -96,6 +111,9 @@ async def add_job(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error saving file: {str(e)}")
 
+    # Parse G-code for estimates
+    parsed = parse_gcode(gcode_path, required_material)
+
     # Create the job record
     job = PrintJob(
         name=name,
@@ -107,6 +125,8 @@ async def add_job(
         required_color=required_color,
         copies=copies,
         priority=priority,
+        estimated_time_secs=parsed.get("estimated_time_secs"),
+        estimated_weight_g=parsed.get("estimated_weight_g"),
     )
     db.add(job)
     await db.commit()
@@ -118,7 +138,30 @@ async def add_job(
     return job
 
 
-from app.schemas.print_job import PrintJobResponse, PrintJobUpdate
+@router.put("/reorder")
+async def reorder_queue(
+    items: List[dict],
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Reorder the print queue by updating priorities.
+    Expects: [{"id": 1, "priority": 10}, {"id": 2, "priority": 9}, ...]
+    """
+    for item in items:
+        job_id = item.get("id")
+        new_priority = item.get("priority")
+        if job_id is None or new_priority is None:
+            continue
+
+        result = await db.execute(select(PrintJob).where(PrintJob.id == job_id))
+        job = result.scalar_one_or_none()
+        if job and job.status == "pending":
+            job.priority = new_priority
+
+    await db.commit()
+    await ws_hub.broadcast_queue_update()
+    return {"status": "ok"}
+
 
 @router.put("/{job_id}", response_model=PrintJobResponse)
 async def update_job(

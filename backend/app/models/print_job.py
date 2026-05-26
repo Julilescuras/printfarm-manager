@@ -26,6 +26,10 @@ class PrintJob(Base):
     required_material: Mapped[str] = mapped_column(String(50), nullable=False, default="PLA")
     required_color: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
+    # G-code parsed estimates
+    estimated_time_secs: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    estimated_weight_g: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     # Copies management
     copies: Mapped[int] = mapped_column(Integer, default=1)
     copies_completed: Mapped[int] = mapped_column(Integer, default=0)
@@ -62,6 +66,8 @@ class PrintJob(Base):
             "required_nozzle": self.required_nozzle,
             "required_material": self.required_material,
             "required_color": self.required_color,
+            "estimated_time_secs": self.estimated_time_secs,
+            "estimated_weight_g": self.estimated_weight_g,
             "copies": self.copies,
             "copies_completed": self.copies_completed,
             "priority": self.priority,
@@ -80,7 +86,11 @@ class PrintHistory(Base):
         Integer, ForeignKey("print_jobs.id"), nullable=True
     )
     printer_id: Mapped[int] = mapped_column(Integer, ForeignKey("printers.id"), nullable=False)
+    printer_name: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    job_name: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     gcode_filename: Mapped[str] = mapped_column(Text, nullable=False)
+    material: Mapped[str] = mapped_column(String(50), nullable=False, default="")
+    estimated_weight_g: Mapped[float | None] = mapped_column(Float, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     duration_secs: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -94,7 +104,11 @@ class PrintHistory(Base):
             "id": self.id,
             "print_job_id": self.print_job_id,
             "printer_id": self.printer_id,
+            "printer_name": self.printer_name,
+            "job_name": self.job_name,
             "gcode_filename": self.gcode_filename,
+            "material": self.material,
+            "estimated_weight_g": self.estimated_weight_g,
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "duration_secs": self.duration_secs,

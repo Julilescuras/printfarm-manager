@@ -34,6 +34,8 @@ class PrintJobResponse(BaseModel):
     required_nozzle: float
     required_material: str
     required_color: Optional[str]
+    estimated_time_secs: Optional[int]
+    estimated_weight_g: Optional[float]
     copies: int
     copies_completed: int
     priority: int
@@ -41,5 +43,22 @@ class PrintJobResponse(BaseModel):
     assigned_printer_id: Optional[int]
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class PrintHistoryResponse(BaseModel):
+    id: int
+    print_job_id: Optional[int]
+    printer_id: int
+    printer_name: str
+    job_name: str
+    gcode_filename: str
+    material: str
+    estimated_weight_g: Optional[float]
+    started_at: Optional[datetime]
+    completed_at: Optional[datetime]
+    duration_secs: Optional[int]
+    result: str
 
     model_config = {"from_attributes": True}
