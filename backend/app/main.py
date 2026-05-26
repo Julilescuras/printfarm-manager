@@ -1,0 +1,218 @@
+"""
+PrintFarm Manager — FastAPI Application Entry Point
+
+This is the main application that ties everything together:
+- Registers all API routers
+- Sets up WebSocket endpoint for frontend
+- Connects to all Moonraker instances on startup
+- Initializes the database
+- Starts the maintenance monitor
+"""
+
+import logging
+import os
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, WebSocket
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import select
+
+from app.config import settings
+from app.database import init_db, async_session
+from app.models.printer import Printer
+from app.models.maintenance import MaintenanceRecord
+from app.routers import printers, print_queue, maintenance, spoolman
+from app.services.moonraker import moonraker_manager
+from app.services.monitor import monitor
+from app.ws.hub import ws_hub
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger("printfarm")
+
+
+async def _seed_printers_from_config():
+    """
+    On first run, seed the database with printers from .env config.
+    Existing printers (matched by moonraker_url) are skipped.
+    """
+    printer_configs = settings.printers
+
+    if not printer_configs:
+        logger.info("No printers configured in PRINTERS_CONFIG env var")
+        return
+
+    async with async_session() as session:
+        # Check if database already has printers
+        result = await session.execute(select(Printer).limit(1))
+        existing = result.scalar_one_or_none()
+        
+        if existing:
+            logger.info("Database already contains printers. Skipping PRINTERS_CONFIG seed.")
+            return
+
+        for pc in printer_configs:
+            printer = Printer(
+                name=pc.name,
+                model=pc.model,
+                moonraker_url=pc.url,
+                nozzle_size=pc.nozzle,
+                extruder_type=pc.extruder_type,
+                fluidd_url=pc.fluidd_url,
+                status="offline",
+            )
+            session.add(printer)
+            logger.info(f"Seeded printer: {pc.name} ({pc.url}) [{pc.extruder_type}]")
+
+        await session.commit()
+
+    # Also seed default maintenance records for new printers
+    async with async_session() as session:
+        result = await session.execute(select(Printer))
+        all_printers = result.scalars().all()
+
+        for printer in all_printers:
+            # Check if maintenance records exist
+            result = await session.execute(
+                select(MaintenanceRecord).where(
+                    MaintenanceRecord.printer_id == printer.id
+                )
+            )
+            existing_records = result.scalars().all()
+
+            if not existing_records:
+                # Create maintenance records based on extruder type
+                defaults = settings.get_maintenance_defaults(printer.extruder_type)
+                for item in defaults:
+                    record = MaintenanceRecord(
+                        printer_id=printer.id,
+                        maintenance_type=item["type"],
+                        threshold_hours=item["hours"],
+                    )
+                    session.add(record)
+                logger.info(
+                    f"Seeded {len(defaults)} maintenance records for: {printer.name} ({printer.extruder_type})"
+                )
+
+        await session.commit()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan: startup and shutdown logic."""
+    logger.info("🚀 PrintFarm Manager starting up...")
+
+    # 1. Initialize database (create tables)
+    await init_db()
+    logger.info("✅ Database initialized")
+
+    # 2. Seed printers from config
+    await _seed_printers_from_config()
+
+    # 3. Set up WebSocket hub callback for Moonraker state changes
+    moonraker_manager.set_state_change_callback(ws_hub.broadcast_printer_update)
+
+    # 4. Connect to all Moonraker instances
+    async with async_session() as session:
+        result = await session.execute(select(Printer))
+        printers_list = [
+            {"id": p.id, "moonraker_url": p.moonraker_url}
+            for p in result.scalars().all()
+        ]
+    await moonraker_manager.connect_all(printers_list)
+    logger.info(f"✅ Connected to {len(printers_list)} Moonraker instances")
+
+    # 5. Start maintenance monitor
+    await monitor.start()
+    logger.info("✅ Maintenance monitor started")
+
+    logger.info("🟢 PrintFarm Manager is ready!")
+
+    yield  # App is running
+
+    # Shutdown
+    logger.info("🔴 PrintFarm Manager shutting down...")
+    await monitor.stop()
+    await moonraker_manager.disconnect_all()
+    logger.info("👋 Goodbye!")
+
+
+# Create FastAPI app
+app = FastAPI(
+    title="PrintFarm Manager",
+    description="Sistema centralizado de gestión para granja de impresión 3D",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    logger.error(f"422 Validation Error: {exc}")
+    logger.error(f"Body: {await request.body()}")
+    return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
+# Allow CORS for frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Mount static files (G-codes and thumbnails)
+os.makedirs(settings.gcodes_path, exist_ok=True)
+app.mount("/gcodes", StaticFiles(directory=settings.gcodes_path), name="gcodes")
+
+# Register routers
+app.include_router(printers.router)
+app.include_router(print_queue.router)
+app.include_router(maintenance.router)
+app.include_router(spoolman.router)
+
+
+# WebSocket endpoint for frontend
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """WebSocket endpoint for real-time updates to frontend clients."""
+    await ws_hub.handle_websocket(websocket)
+
+
+# Health check
+@app.get("/health")
+async def health_check():
+    """Health check endpoint."""
+    return {
+        "status": "ok",
+        "service": "PrintFarm Manager",
+        "version": "1.0.0",
+    }
+
+
+@app.get("/api/status")
+async def system_status():
+    """Get overall system status."""
+    from app.services.spoolman import spoolman_client
+
+    spoolman_ok = await spoolman_client.health_check()
+
+    async with async_session() as session:
+        result = await session.execute(select(Printer))
+        all_printers = result.scalars().all()
+
+    connected = sum(1 for p in all_printers if p.status != "offline")
+
+    return {
+        "printers_total": len(all_printers),
+        "printers_connected": connected,
+        "spoolman_connected": spoolman_ok,
+        "moonraker_clients": len(moonraker_manager.clients),
+    }

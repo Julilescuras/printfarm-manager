@@ -1,0 +1,106 @@
+/**
+ * TypeScript type definitions for the PrintFarm Manager.
+ */
+
+export interface PrinterState {
+  id: number;
+  name: string;
+  model: string;
+  moonraker_url: string;
+  nozzle_size: number;
+  extruder_type: "direct_drive" | "bowden";
+  fluidd_url: string | null;
+  current_spool_id: number | null;
+  status: PrinterStatus;
+  current_job_progress: number;
+  hotend_temp: number;
+  hotend_target: number;
+  bed_temp: number;
+  bed_target: number;
+  current_filename: string | null;
+  thumbnail_url: string | null;
+  total_print_time_secs: number;
+  eta_seconds: number | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export type PrinterStatus =
+  | "printing"
+  | "standby"
+  | "requires_clearance"
+  | "available"
+  | "error"
+  | "offline";
+
+export interface PrintJob {
+  id: number;
+  name: string;
+  gcode_filename: string;
+  gcode_original_name: string;
+  compatible_models: string; // JSON string
+  required_nozzle: number;
+  required_material: string;
+  required_color: string | null;
+  copies: number;
+  copies_completed: number;
+  priority: number;
+  status: JobStatus;
+  assigned_printer_id: number | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export type JobStatus = "pending" | "printing" | "completed" | "cancelled";
+
+export interface MaintenanceRecord {
+  id: number;
+  printer_id: number;
+  maintenance_type: string;
+  threshold_hours: number;
+  accumulated_hours: number;
+  last_reset_at: string | null;
+  last_reset_note: string | null;
+  is_alert_active: boolean;
+  created_at: string | null;
+}
+
+export interface MaintenanceLog {
+  id: number;
+  record_id: number;
+  printer_id: number;
+  maintenance_type: string;
+  hours_at_reset: number;
+  note: string | null;
+  reset_at: string;
+}
+
+export interface SpoolInfo {
+  id: number;
+  filament: {
+    id: number;
+    name: string;
+    material: string;
+    color_hex: string;
+    diameter: number;
+    density: number;
+    vendor: {
+      id: number;
+      name: string;
+    };
+  };
+  remaining_weight: number | null;
+  used_weight: number | null;
+  first_used: string | null;
+  last_used: string | null;
+}
+
+export interface WSMessage {
+  type: "initial_state" | "printer_update" | "queue_update" | "maintenance_update";
+  data: any;
+}
+
+export interface InitialState {
+  printers: PrinterState[];
+  active_alerts: MaintenanceRecord[];
+}

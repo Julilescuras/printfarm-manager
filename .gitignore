@@ -1,0 +1,13 @@
+node_modules/
+.next/
+__pycache__/
+*.pyc
+.env
+backend/data/printfarm.db
+backend/data/*.db-shm
+backend/data/*.db-wal
+backend/gcodes/
+*.db
+.DS_Store
+backup/
+.venv/

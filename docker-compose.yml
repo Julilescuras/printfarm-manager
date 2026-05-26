@@ -1,0 +1,96 @@
+services:
+  # ─────────────────────────────────────────────
+  # Backend — FastAPI + Python
+  # ─────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: printfarm-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/data:/app/data        # SQLite persistence
+      - ./backend/gcodes:/app/gcodes    # G-code file storage
+    env_file:
+      - .env
+    depends_on:
+      - spoolman
+    restart: unless-stopped
+    networks:
+      - printfarm
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health').raise_for_status()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ─────────────────────────────────────────────
+  # Frontend — Next.js
+  # ─────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: printfarm-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - BACKEND_URL=http://backend:8000
+      - BACKEND_WS_URL=http://backend:8000
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_WS_URL=ws://localhost:8000/ws
+      - NODE_OPTIONS=--max-old-space-size=256
+      - NEXT_TELEMETRY_DISABLED=1
+    depends_on:
+      backend:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - printfarm
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ─────────────────────────────────────────────
+  # Spoolman — Filament Management
+  # ─────────────────────────────────────────────
+  spoolman:
+    image: ghcr.io/donkie/spoolman:latest
+    container_name: printfarm-spoolman
+    ports:
+      - "7912:8000"
+    volumes:
+      - spoolman_data:/home/app/.local/share/spoolman
+    environment:
+      - TZ=America/Argentina/Buenos_Aires
+    restart: unless-stopped
+    networks:
+      - printfarm
+
+
+volumes:
+  spoolman_data:
+    driver: local
+
+networks:
+  printfarm:
+    driver: bridge
