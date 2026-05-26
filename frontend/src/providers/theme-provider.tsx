@@ -26,18 +26,21 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Load from localStorage on mount
     const saved = localStorage.getItem("printfarm-theme") as Theme | null;
-    if (saved && (saved === "dark" || saved === "light")) {
-      setThemeState(saved);
-      document.documentElement.classList.toggle("dark", saved === "dark");
-      document.documentElement.classList.toggle("light", saved === "light");
+    if (saved === "light") {
+      setThemeState("light");
+      document.documentElement.classList.remove("dark");
     }
+    // Default is dark — html already has class="dark" from SSR
   }, []);
 
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme);
     localStorage.setItem("printfarm-theme", newTheme);
-    document.documentElement.classList.toggle("dark", newTheme === "dark");
-    document.documentElement.classList.toggle("light", newTheme === "light");
+    if (newTheme === "dark") {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
   };
 
   const toggleTheme = () => {

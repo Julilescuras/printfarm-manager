@@ -6,27 +6,6 @@
 
 @layer base {
   :root {
-    --background: 222 47% 8%;
-    --foreground: 210 40% 98%;
-    --card: 222 30% 12%;
-    --card-foreground: 210 40% 98%;
-    --primary: 142 76% 50%;
-    --primary-foreground: 222 47% 8%;
-    --secondary: 217 33% 17%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20% 55%;
-    --accent: 262 83% 58%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 222 20% 18%;
-    --input: 222 20% 18%;
-    --ring: 142 76% 50%;
-    --radius: 0.75rem;
-  }
-
-  .light {
     --background: 210 20% 96%;
     --foreground: 222 47% 11%;
     --card: 0 0% 100%;
@@ -44,6 +23,27 @@
     --border: 214 20% 88%;
     --input: 214 20% 88%;
     --ring: 142 76% 40%;
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    --background: 222 47% 8%;
+    --foreground: 210 40% 98%;
+    --card: 222 30% 12%;
+    --card-foreground: 210 40% 98%;
+    --primary: 142 76% 50%;
+    --primary-foreground: 222 47% 8%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 55%;
+    --accent: 262 83% 58%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 222 20% 18%;
+    --input: 222 20% 18%;
+    --ring: 142 76% 50%;
   }
 
   * {
@@ -62,7 +62,14 @@
 @layer components {
   /* Glassmorphism card effect */
   .glass-card {
-    @apply bg-card/80 backdrop-blur-xl border border-white/5 rounded-xl shadow-xl;
+    @apply bg-card/80 backdrop-blur-xl border border-border rounded-xl;
+    box-shadow:
+      0 4px 6px -1px rgba(0, 0, 0, 0.1),
+      0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  }
+
+  .dark .glass-card {
+    @apply border-white/5;
     box-shadow:
       0 0 0 1px rgba(255, 255, 255, 0.05),
       0 4px 6px -1px rgba(0, 0, 0, 0.3),
@@ -75,13 +82,19 @@
   }
 
   .glass-card-hover:hover {
+    box-shadow:
+      0 10px 15px -3px rgba(0, 0, 0, 0.15),
+      0 4px 6px -4px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+  }
+
+  .dark .glass-card-hover:hover {
     @apply border-white/10;
     box-shadow:
       0 0 0 1px rgba(255, 255, 255, 0.1),
       0 10px 15px -3px rgba(0, 0, 0, 0.4),
       0 4px 6px -4px rgba(0, 0, 0, 0.3),
       inset 0 1px 0 rgba(255, 255, 255, 0.08);
-    transform: translateY(-2px);
   }
 
   /* Status dot with pulse animation */

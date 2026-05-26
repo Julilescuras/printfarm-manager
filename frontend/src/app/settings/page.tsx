@@ -117,7 +117,7 @@ export default function SettingsPage() {
           </div>
           <button
             onClick={toggleTheme}
-            className="relative w-14 h-7 rounded-full transition-colors duration-300 focus:outline-none"
+            className="relative w-14 min-w-[3.5rem] h-7 rounded-full transition-colors duration-300 focus:outline-none shrink-0"
             style={{
               backgroundColor: theme === "dark" ? "hsl(var(--primary))" : "hsl(var(--muted))",
             }}
@@ -155,7 +155,7 @@ export default function SettingsPage() {
           </div>
           <button
             onClick={() => setTelegramEnabled(!telegramEnabled)}
-            className="relative w-14 h-7 rounded-full transition-colors duration-300 focus:outline-none"
+            className="relative w-14 min-w-[3.5rem] h-7 rounded-full transition-colors duration-300 focus:outline-none shrink-0"
             style={{
               backgroundColor: telegramEnabled ? "hsl(var(--primary))" : "hsl(var(--muted))",
             }}

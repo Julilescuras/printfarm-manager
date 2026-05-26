@@ -38,7 +38,7 @@ async def get_db() -> AsyncSession:
 
 
 async def init_db():
-    """Create all tables on startup."""
+    """Create all tables on startup and run migrations for new columns."""
     from sqlalchemy import text
     async with engine.begin() as conn:
         # Enable WAL mode for better concurrency and performance
@@ -46,5 +46,27 @@ async def init_db():
         await conn.execute(text("PRAGMA synchronous=NORMAL;"))
         
         # Import all models so they are registered with Base
-        from app.models import printer, print_job, maintenance  # noqa: F401
+        from app.models import printer, print_job, maintenance, settings  # noqa: F401
         await conn.run_sync(Base.metadata.create_all)
+
+        # --- Migrations: add new columns to existing tables ---
+        # SQLAlchemy's create_all doesn't add columns to existing tables,
+        # so we handle schema migrations here with ALTER TABLE.
+        migrations = [
+            ("print_jobs", "estimated_time_secs", "INTEGER"),
+            ("print_jobs", "estimated_weight_g", "REAL"),
+            ("print_history", "printer_name", "VARCHAR(100) NOT NULL DEFAULT ''"),
+            ("print_history", "job_name", "VARCHAR(200) NOT NULL DEFAULT ''"),
+            ("print_history", "material", "VARCHAR(50) NOT NULL DEFAULT ''"),
+            ("print_history", "estimated_weight_g", "REAL"),
+            ("print_history", "duration_secs", "INTEGER"),
+            ("print_history", "result", "VARCHAR(50) NOT NULL DEFAULT 'success'"),
+        ]
+        for table, column, col_type in migrations:
+            try:
+                await conn.execute(
+                    text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+                )
+            except Exception:
+                # Column already exists — skip silently
+                pass
