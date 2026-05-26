@@ -10,14 +10,6 @@ Sistema centralizado de gestión para granja de impresión 3D con integración M
 - **Inventario de filamento** — Integración con Spoolman
 - **Alertas de mantenimiento** — Contadores configurables con reset
 
-## Impresoras Soportadas
-
-| Impresora | Cantidad | Conexión |
-|-----------|----------|----------|
-| Ender 3 V2 Neo | 4 | Sonic Pad (1 IP, 4 puertos) |
-| Elegoo Neptune 4 Max | 1 | IP propia |
-| Trimaker | 1 | IP propia |
-
 ## Instalación Rápida (Linux)
 
 ```bash

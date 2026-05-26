@@ -11,3 +11,4 @@ backend/gcodes/
 .DS_Store
 backup/
 .venv/
+GUIA_DEPLOY.md
