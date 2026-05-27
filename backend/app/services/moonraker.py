@@ -91,15 +91,7 @@ class MoonrakerClient:
                     await self._send_jsonrpc(ws, "server.info")
 
                     # Subscribe to printer objects for real-time updates
-                    await self._send_jsonrpc(ws, "printer.objects.subscribe", {
-                        "objects": {
-                            "print_stats": None,
-                            "extruder": ["temperature", "target"],
-                            "heater_bed": ["temperature", "target"],
-                            "display_status": ["progress"],
-                            "virtual_sdcard": ["progress", "file_position", "file_path"],
-                        }
-                    })
+                    await self._subscribe_objects(ws)
 
                     # Process incoming messages
                     async for message in ws:
@@ -155,6 +147,8 @@ class MoonrakerClient:
         elif method == "notify_klippy_ready":
             logger.info(f"[Printer {self.printer_id}] Klipper is ready")
             await self._set_online_status()
+            if self._ws:
+                await self._subscribe_objects(self._ws)
 
         elif method == "notify_klippy_shutdown":
             logger.warning(f"[Printer {self.printer_id}] Klipper shutdown")
@@ -249,6 +243,18 @@ class MoonrakerClient:
                     del updates["status"]
 
             await self._update_printer_db(**updates)
+
+    async def _subscribe_objects(self, ws):
+        """Subscribe to printer objects to receive real-time updates via notify_status_update."""
+        await self._send_jsonrpc(ws, "printer.objects.subscribe", {
+            "objects": {
+                "print_stats": None,
+                "extruder": ["temperature", "target"],
+                "heater_bed": ["temperature", "target"],
+                "display_status": ["progress"],
+                "virtual_sdcard": ["progress", "file_position", "file_path"],
+            }
+        })
 
     async def _update_printer_db(self, **kwargs):
         """Update the printer record in the database and notify listeners."""
