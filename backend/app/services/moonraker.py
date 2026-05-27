@@ -190,12 +190,6 @@ class MoonrakerClient:
             if "target" in bed:
                 updates["bed_target"] = round(bed["target"], 1)
 
-        # Extract print progress
-        if "display_status" in status_data:
-            ds = status_data["display_status"]
-            if "progress" in ds and ds["progress"] is not None:
-                updates["current_job_progress"] = round(ds["progress"], 4)
-
         if "virtual_sdcard" in status_data:
             vsd = status_data["virtual_sdcard"]
             if "progress" in vsd and vsd["progress"] is not None:
@@ -290,7 +284,6 @@ class MoonrakerClient:
                 "print_stats": None,
                 "extruder": ["temperature", "target"],
                 "heater_bed": ["temperature", "target"],
-                "display_status": ["progress"],
                 "virtual_sdcard": ["progress", "file_position", "file_path"],
             }
         })
