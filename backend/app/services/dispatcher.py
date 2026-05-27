@@ -174,8 +174,11 @@ class Dispatcher:
                 f"printer has {printer.nozzle_size}mm"
             )
 
-        # 3. Check material (only if spool is loaded)
-        if spool_material and job.required_material:
+        # 3. Check material
+        if not spool_material:
+            return False, "No spool loaded on printer"
+            
+        if job.required_material:
             if job.required_material.upper() != spool_material:
                 return False, (
                     f"Material mismatch: job requires '{job.required_material}', "

@@ -333,6 +333,9 @@ class MoonrakerClient:
             )
             printer = result.scalar_one_or_none()
             if printer:
+                high_freq_fields = {"hotend_temp", "bed_temp", "current_job_progress"}
+                only_ephemeral = all(k in high_freq_fields for k in kwargs.keys())
+
                 changed = False
                 for key, value in kwargs.items():
                     if getattr(printer, key) != value:
@@ -340,10 +343,13 @@ class MoonrakerClient:
                         changed = True
                 
                 if changed:
-                    await session.commit()
-                    await session.refresh(printer)
+                    now = time.time()
+                    if not only_ephemeral or (now - getattr(self, "_last_db_commit_time", 0)) > 5.0:
+                        await session.commit()
+                        await session.refresh(printer)
+                        self._last_db_commit_time = now
 
-                    # Notify the WebSocket hub of state changes
+                    # Notify the WebSocket hub of state changes (always broadcast)
                     if self.on_state_change:
                         await self.on_state_change(printer.to_dict())
 

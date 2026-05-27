@@ -3,6 +3,7 @@ Print Queue Router — Manage the centralized print queue.
 Jobs are added with G-code upload and dispatched automatically.
 """
 
+import asyncio
 import json
 import os
 import shutil
@@ -106,14 +107,16 @@ async def add_job(
     gcode_path = _organize_gcode_path(required_material, gcode.filename)
 
     try:
-        with open(gcode_path, "wb") as f:
-            content = await gcode.read()
-            f.write(content)
+        content = await gcode.read()
+        def _save():
+            with open(gcode_path, "wb") as f:
+                f.write(content)
+        await asyncio.to_thread(_save)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error saving file: {str(e)}")
 
-    # Parse G-code for estimates
-    parsed = parse_gcode(gcode_path, required_material)
+    # Parse G-code for estimates (in a separate thread to prevent blocking)
+    parsed = await asyncio.to_thread(parse_gcode, gcode_path, required_material)
 
     # Create the job record
     job = PrintJob(
