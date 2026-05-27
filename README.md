@@ -1,4 +1,4 @@
-# 🖨️ PrintFarm Manager
+# 🖨️ PrintFarm Manager v1.1.1
 
 Sistema centralizado de gestión para granja de impresión 3D con integración Moonraker + Spoolman.
 
@@ -6,6 +6,8 @@ Sistema centralizado de gestión para granja de impresión 3D con integración M
 
 - **Dashboard en tiempo real** — Estado de todas las impresoras vía WebSocket con temperaturas, progreso y estimaciones
 - **Cola de impresión inteligente** — Despacho automático basado en compatibilidad de modelo, boquilla, material, color y verificación de filamento disponible
+- **Asignación automática** — Al conectarse una impresora o vaciarse la cama, el sistema busca y envía el siguiente trabajo compatible automáticamente
+- **Control manual de estados** — Cambiá el estado de cada impresora desde la interfaz: Disponible, En Espera o En Pausa (no recibe trabajos)
 - **Parseo automático de G-code** — Al subir un archivo, se extraen automáticamente el tiempo estimado y el peso de filamento desde los comentarios del slicer (Cura, PrusaSlicer, OrcaSlicer, Simplify3D)
 - **Drag & drop** — Reordená las prioridades de la cola arrastrando los trabajos
 - **Lógica de "Cama Ocupada"** — Control de flujo con botón de vaciado
@@ -15,6 +17,7 @@ Sistema centralizado de gestión para granja de impresión 3D con integración M
 - **Notificaciones por Telegram** — Alertas automáticas de: impresión completada, cama para vaciar, errores y mantenimiento. Configuración desde la web
 - **Reportes semanales** — Resumen automático enviado al grupo de Telegram con estadísticas de impresiones, horas y filamento usado
 - **Modo oscuro/claro** — Toggle de tema con persistencia
+- **CI/CD con GitHub Actions** — Las imágenes Docker se construyen automáticamente en GitHub y se descargan pre-compiladas en el servidor
 
 ## Instalación Rápida (Linux)
 
@@ -31,8 +34,22 @@ chmod +x install.sh
 El script automáticamente:
 - Instala Docker y Docker Compose si no están presentes
 - Copia `.env.example` a `.env`
-- Construye las imágenes Docker
+- Descarga las imágenes Docker pre-construidas desde GitHub Container Registry
 - Levanta todos los servicios
+
+> 💡 **Nota:** Las imágenes se descargan ya compiladas, no se construyen localmente. Esto hace que la instalación sea mucho más rápida (~1 minuto vs ~15 minutos).
+
+## Actualización
+
+```bash
+cd printfarm-manager
+
+# Ejecutá el script de actualización
+chmod +x update.sh   # (solo la primera vez)
+./update.sh
+```
+
+El script descarga los últimos cambios de GitHub, baja las imágenes Docker pre-compiladas y reinicia los servicios. **No necesita compilar nada localmente.**
 
 ## Acceso
 
@@ -48,6 +65,17 @@ El script automáticamente:
 ### Impresoras
 
 Las impresoras se configuran directamente desde la **interfaz web**. Abrí el frontend (`http://tu-ip:3000`), andá a la pestaña **Impresoras** y usá el formulario para agregar, editar o eliminar máquinas. El sistema se conecta automáticamente a Moonraker.
+
+### Estados de Impresora
+
+Desde la pantalla de detalle de cada impresora podés cambiar su estado manualmente:
+
+| Estado | Descripción |
+|--------|-------------|
+| **Disponible** | Recibe trabajos automáticamente de la cola |
+| **En Espera** | Recibe trabajos automáticamente de la cola |
+| **En Pausa** | ⏸ No recibe trabajos automáticamente. Útil para mantenimiento o cuando no querés que imprima |
+| **Cama Ocupada** | Se activa automáticamente al terminar una impresión. Requiere vaciar la cama para continuar |
 
 ### Notificaciones de Telegram
 
@@ -77,8 +105,8 @@ docker compose restart backend
 # Detener todo
 docker compose down
 
-# Actualizar y reiniciar
-docker compose up -d --build
+# Actualizar a la última versión
+./update.sh
 ```
 
 ## Arquitectura
@@ -96,6 +124,12 @@ docker compose up -d --build
               │Spoolman │ │SQLite│ │Telegram  │
               │Port 7912│ │  DB  │ │Bot API   │
               └────────┘ └──────┘ └──────────┘
+
+┌──────────────────────────────────────────────┐
+│          GitHub Actions (CI/CD)               │
+│  Build Docker Images → Push to ghcr.io       │
+│  Trigger: push to main / tags v*             │
+└──────────────────────────────────────────────┘
 ```
 
 ## Endpoints API
@@ -107,6 +141,9 @@ docker compose up -d --build
 | PUT | `/api/printers/{id}` | Editar impresora |
 | DELETE | `/api/printers/{id}` | Eliminar impresora |
 | POST | `/api/printers/{id}/clear-bed` | Vaciar cama |
+| PUT | `/api/printers/{id}/status` | Cambiar estado (paused/available/standby) |
+| PUT | `/api/printers/{id}/spool` | Asignar spool |
+| POST | `/api/printers/{id}/dispatch` | Forzar despacho manual |
 | GET | `/api/queue` | Cola de impresión |
 | POST | `/api/queue` | Agregar trabajo (multipart con G-code) |
 | PUT | `/api/queue/reorder` | Reordenar prioridades |
@@ -127,4 +164,4 @@ docker compose up -d --build
 - **Frontend:** Next.js 15, React 19, Tailwind CSS, TypeScript
 - **Filamento:** Spoolman (contenedor oficial)
 - **Notificaciones:** Telegram Bot API
-- **Infra:** Docker, Docker Compose
+- **Infra:** Docker, Docker Compose, GitHub Actions, GitHub Container Registry
