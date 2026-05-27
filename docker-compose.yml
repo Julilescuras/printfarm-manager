@@ -3,6 +3,7 @@ services:
   # Backend — FastAPI + Python
   # ─────────────────────────────────────────────
   backend:
+    image: ghcr.io/julilescuras/printfarm-backend:latest
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -40,6 +41,7 @@ services:
   # Frontend — Next.js
   # ─────────────────────────────────────────────
   frontend:
+    image: ghcr.io/julilescuras/printfarm-frontend:latest
     build:
       context: ./frontend
       dockerfile: Dockerfile

@@ -6,8 +6,8 @@ WORKDIR /app
 # Copy package files
 COPY package.json package-lock.json* ./
 
-# Install dependencies
-RUN npm install
+# Install dependencies (npm ci is faster and deterministic)
+RUN npm ci --ignore-scripts 2>/dev/null || npm install
 
 # Copy source code
 COPY . .
@@ -16,6 +16,9 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_API_URL=""
 ENV NEXT_PUBLIC_WS_URL=""
+
+# Limit memory during build for low-resource machines
+ENV NODE_OPTIONS="--max-old-space-size=512"
 
 # Build the application
 RUN npm run build

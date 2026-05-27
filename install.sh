@@ -83,14 +83,14 @@ mkdir -p backend/gcodes
 echo -e "  ${GREEN}✓${NC} backend/data/ (SQLite)"
 echo -e "  ${GREEN}✓${NC} backend/gcodes/ (Archivos G-code)"
 
-# ─── Step 5: Build images ───────────────────────────
-echo -e "\n${CYAN}[5/6]${NC} Construyendo imágenes Docker (esto puede tomar unos minutos)..."
+# ─── Step 5: Pull pre-built images ──────────────────
+echo -e "\n${CYAN}[5/6]${NC} Descargando imágenes Docker pre-construidas desde GitHub..."
 echo ""
 
-$COMPOSE_CMD build --no-cache
+$COMPOSE_CMD pull
 
 echo ""
-echo -e "  ${GREEN}✓${NC} Imágenes construidas correctamente"
+echo -e "  ${GREEN}✓${NC} Imágenes descargadas correctamente"
 
 # ─── Step 6: Start services ─────────────────────────
 echo -e "\n${CYAN}[6/6]${NC} Iniciando servicios..."
@@ -122,7 +122,7 @@ echo "║  Comandos útiles:                                     ║"
 echo "║  • Ver logs:     docker compose logs -f               ║"
 echo "║  • Reiniciar:    docker compose restart               ║"
 echo "║  • Detener:      docker compose down                  ║"
-echo "║  • Actualizar:   git pull && docker compose up -d --build"
+echo "║  • Actualizar:   ./update.sh                       ║"
 echo "║                                                       ║"
 echo "╚═══════════════════════════════════════════════════════╝"
 echo -e "${NC}"

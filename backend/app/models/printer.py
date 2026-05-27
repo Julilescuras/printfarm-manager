@@ -32,7 +32,7 @@ class Printer(Base):
     # Runtime state (updated by Moonraker WebSocket)
     status: Mapped[str] = mapped_column(
         String(50), default="offline",
-        comment="printing | standby | requires_clearance | available | error | offline"
+        comment="printing | standby | requires_clearance | available | paused | error | offline"
     )
     current_job_progress: Mapped[float] = mapped_column(Float, default=0.0)
     hotend_temp: Mapped[float] = mapped_column(Float, default=0.0)

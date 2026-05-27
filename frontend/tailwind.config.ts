@@ -45,6 +45,7 @@ const config: Config = {
           standby: "hsl(210, 40%, 60%)",
           available: "hsl(142, 76%, 50%)",
           clearance: "hsl(262, 83%, 58%)",
+          paused: "hsl(38, 92%, 50%)",
           error: "hsl(0, 84%, 60%)",
           offline: "hsl(220, 13%, 40%)",
         },

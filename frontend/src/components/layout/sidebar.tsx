@@ -43,7 +43,7 @@ export function Sidebar() {
           </div>
           <div>
             <h1 className="text-lg font-bold text-gradient">PrintFarm</h1>
-            <p className="text-xs text-muted-foreground">Manager v1.1</p>
+            <p className="text-xs text-muted-foreground">Manager v1.1.1</p>
           </div>
         </div>
       </div>

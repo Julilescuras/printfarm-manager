@@ -13,6 +13,7 @@ export default function DashboardPage() {
     total: printers.length,
     printing: printers.filter((p) => p.status === "printing").length,
     available: printers.filter((p) => p.status === "available" || p.status === "standby").length,
+    paused: printers.filter((p) => p.status === "paused").length,
     clearance: printers.filter((p) => p.status === "requires_clearance").length,
     error: printers.filter((p) => p.status === "error").length,
     offline: printers.filter((p) => p.status === "offline").length,
@@ -37,7 +38,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Quick Stats Bar */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <div className="glass-card p-4 flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center">
             <Activity className="w-5 h-5 text-primary" />
@@ -67,6 +68,18 @@ export default function DashboardPage() {
             <div className="text-xs text-muted-foreground">Cama Ocupada</div>
           </div>
         </div>
+
+        {stats.paused > 0 && (
+          <div className="glass-card p-4 flex items-center gap-3 border-amber-500/30">
+            <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center">
+              <AlertTriangle className="w-5 h-5 text-amber-400" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-amber-400">{stats.paused}</div>
+              <div className="text-xs text-muted-foreground">En Pausa</div>
+            </div>
+          </div>
+        )}
 
         <div className="glass-card p-4 flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-red-500/20 flex items-center justify-center">

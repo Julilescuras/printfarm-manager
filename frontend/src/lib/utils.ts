@@ -57,6 +57,12 @@ export function getStatusInfo(status: string): {
         dotClass: "status-dot-clearance",
         badgeClass: "bg-status-clearance/20 text-status-clearance border-status-clearance/30",
       };
+    case "paused":
+      return {
+        label: "En Pausa",
+        dotClass: "status-dot-paused",
+        badgeClass: "bg-status-paused/20 text-status-paused border-status-paused/30",
+      };
     case "error":
       return {
         label: "Error",

@@ -117,15 +117,15 @@ export default function SettingsPage() {
           </div>
           <button
             onClick={toggleTheme}
-            className="relative w-14 min-w-[3.5rem] h-7 rounded-full transition-colors duration-300 focus:outline-none shrink-0"
+            className="relative w-14 min-w-[3.5rem] h-7 rounded-full transition-colors duration-300 focus:outline-none shrink-0 overflow-hidden"
             style={{
               backgroundColor: theme === "dark" ? "hsl(var(--primary))" : "hsl(var(--muted))",
             }}
           >
             <span
-              className="absolute top-0.5 w-6 h-6 bg-white rounded-full shadow-md transition-transform duration-300 flex items-center justify-center"
+              className="absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-md transition-transform duration-300 flex items-center justify-center"
               style={{
-                transform: theme === "dark" ? "translateX(30px)" : "translateX(2px)",
+                transform: theme === "dark" ? "translateX(28px)" : "translateX(0px)",
               }}
             >
               {theme === "dark" ? (
@@ -155,15 +155,15 @@ export default function SettingsPage() {
           </div>
           <button
             onClick={() => setTelegramEnabled(!telegramEnabled)}
-            className="relative w-14 min-w-[3.5rem] h-7 rounded-full transition-colors duration-300 focus:outline-none shrink-0"
+            className="relative w-14 min-w-[3.5rem] h-7 rounded-full transition-colors duration-300 focus:outline-none shrink-0 overflow-hidden"
             style={{
               backgroundColor: telegramEnabled ? "hsl(var(--primary))" : "hsl(var(--muted))",
             }}
           >
             <span
-              className="absolute top-0.5 w-6 h-6 bg-white rounded-full shadow-md transition-transform duration-300"
+              className="absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-md transition-transform duration-300"
               style={{
-                transform: telegramEnabled ? "translateX(30px)" : "translateX(2px)",
+                transform: telegramEnabled ? "translateX(28px)" : "translateX(0px)",
               }}
             />
           </button>

@@ -191,6 +191,57 @@ async def trigger_dispatch(printer_id: int, db: AsyncSession = Depends(get_db)):
     }
 
 
+MANUAL_STATUSES = {"paused", "available", "standby"}
+
+
+@router.put("/{printer_id}/status")
+async def set_printer_status(
+    printer_id: int,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Manually set printer status (paused / available / standby).
+    When set to available/standby, triggers auto-dispatch.
+    """
+    new_status = body.get("status", "").strip().lower()
+    if new_status not in MANUAL_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status '{new_status}'. Allowed: {', '.join(sorted(MANUAL_STATUSES))}",
+        )
+
+    result = await db.execute(select(Printer).where(Printer.id == printer_id))
+    printer = result.scalar_one_or_none()
+    if not printer:
+        raise HTTPException(status_code=404, detail="Printer not found")
+
+    # Don't allow status change if printing
+    if printer.status == "printing":
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot change status while printing",
+        )
+
+    printer.status = new_status
+    await db.commit()
+    await db.refresh(printer)
+
+    # Broadcast the update
+    await ws_hub.broadcast_printer_update(printer.to_dict())
+
+    # If set to available or standby, try auto-dispatch
+    dispatched = False
+    if new_status in ("available", "standby"):
+        dispatched = await dispatcher.try_dispatch(printer_id)
+
+    return {
+        "status": "ok",
+        "printer_status": new_status,
+        "dispatched": dispatched,
+    }
+
+
 @router.put("/{printer_id}/spool")
 async def assign_spool(
     printer_id: int,

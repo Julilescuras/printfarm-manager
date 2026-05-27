@@ -30,6 +30,7 @@ export type PrinterStatus =
   | "standby"
   | "requires_clearance"
   | "available"
+  | "paused"
   | "error"
   | "offline";
 

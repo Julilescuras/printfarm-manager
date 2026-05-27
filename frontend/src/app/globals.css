@@ -121,6 +121,11 @@
     box-shadow: 0 0 10px hsl(262, 83%, 58%);
   }
 
+  .status-dot-paused {
+    @apply bg-status-paused;
+    box-shadow: 0 0 6px hsl(38, 92%, 50%);
+  }
+
   .status-dot-error {
     @apply bg-status-error animate-pulse-glow;
     box-shadow: 0 0 8px hsl(0, 84%, 60%);

@@ -10,6 +10,9 @@ import {
   FileCode,
   ExternalLink,
   X,
+  Play,
+  Pause,
+  Power,
 } from "lucide-react";
 import { useWSContext } from "@/providers/websocket-provider";
 import { api } from "@/lib/api";
@@ -23,6 +26,7 @@ export default function PrinterDetailsPage() {
   const { printers, isConnected, refreshState } = useWSContext();
   const [spoolInfo, setSpoolInfo] = useState<any>(null);
   const [isLoadingSpool, setIsLoadingSpool] = useState(false);
+  const [isChangingStatus, setIsChangingStatus] = useState(false);
 
   const printer = printers.find((p) => p.id === printerId);
 
@@ -70,17 +74,15 @@ export default function PrinterDetailsPage() {
     }
   };
 
-  const handleTriggerDispatch = async () => {
+  const handleSetStatus = async (status: string) => {
+    setIsChangingStatus(true);
     try {
-      const result = await api.triggerDispatch(printer.id);
-      if (result.dispatched) {
-        // Refresh state to show the new print
-        await refreshState();
-      } else {
-        alert("No se encontraron trabajos compatibles en la cola.");
-      }
+      await api.setPrinterStatus(printer.id, status);
+      await refreshState();
     } catch {
-      alert("Error al buscar trabajo");
+      alert("Error al cambiar el estado");
+    } finally {
+      setIsChangingStatus(false);
     }
   };
 
@@ -88,10 +90,13 @@ export default function PrinterDetailsPage() {
     printing: "text-blue-400 bg-blue-500/20 border-blue-500/30",
     available: "text-green-400 bg-green-500/20 border-green-500/30",
     requires_clearance: "text-purple-400 bg-purple-500/20 border-purple-500/30",
+    paused: "text-amber-400 bg-amber-500/20 border-amber-500/30",
     error: "text-red-400 bg-red-500/20 border-red-500/30",
     offline: "text-gray-400 bg-gray-500/20 border-gray-500/30",
     standby: "text-emerald-400 bg-emerald-500/20 border-emerald-500/30",
   };
+
+  const isIdle = ["standby", "available", "paused"].includes(printer.status);
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -177,7 +182,7 @@ export default function PrinterDetailsPage() {
           </div>
 
           <div className="glass-card p-6">
-            <h2 className="text-lg font-bold mb-4">Acciones</h2>
+            <h2 className="text-lg font-bold mb-4">Estado de la Impresora</h2>
             {printer.status === "requires_clearance" ? (
               <button
                 onClick={handleClearBed}
@@ -185,21 +190,65 @@ export default function PrinterDetailsPage() {
               >
                 Vaciar Cama (Clear Bed)
               </button>
-            ) : printer.status === "standby" || printer.status === "available" ? (
+            ) : isIdle ? (
               <div className="space-y-3">
-                <button
-                  onClick={handleTriggerDispatch}
-                  className="w-full py-3 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg font-semibold shadow-lg shadow-primary/20 transition-all"
-                >
-                  🔍 Buscar Trabajo en Cola
-                </button>
-                <p className="text-xs text-muted-foreground text-center">
-                  Busca el próximo trabajo compatible y lo envía a esta impresora
+                <p className="text-xs text-muted-foreground mb-3">
+                  Seleccioná el estado de la impresora. Las impresoras en pausa no reciben trabajos automáticamente.
+                </p>
+                <div className="grid grid-cols-1 gap-2">
+                  <button
+                    onClick={() => handleSetStatus("available")}
+                    disabled={isChangingStatus || printer.status === "available"}
+                    className={`flex items-center justify-center gap-2 py-2.5 rounded-lg font-medium text-sm transition-all disabled:opacity-50 ${
+                      printer.status === "available"
+                        ? "bg-green-500/20 text-green-400 border-2 border-green-500/50 ring-2 ring-green-500/20"
+                        : "bg-secondary hover:bg-green-500/10 text-muted-foreground hover:text-green-400 border border-border hover:border-green-500/30"
+                    }`}
+                  >
+                    <Play className="w-4 h-4" />
+                    Disponible
+                    {printer.status === "available" && <span className="text-xs opacity-70">(actual)</span>}
+                  </button>
+                  <button
+                    onClick={() => handleSetStatus("standby")}
+                    disabled={isChangingStatus || printer.status === "standby"}
+                    className={`flex items-center justify-center gap-2 py-2.5 rounded-lg font-medium text-sm transition-all disabled:opacity-50 ${
+                      printer.status === "standby"
+                        ? "bg-blue-500/20 text-blue-400 border-2 border-blue-500/50 ring-2 ring-blue-500/20"
+                        : "bg-secondary hover:bg-blue-500/10 text-muted-foreground hover:text-blue-400 border border-border hover:border-blue-500/30"
+                    }`}
+                  >
+                    <Power className="w-4 h-4" />
+                    En Espera
+                    {printer.status === "standby" && <span className="text-xs opacity-70">(actual)</span>}
+                  </button>
+                  <button
+                    onClick={() => handleSetStatus("paused")}
+                    disabled={isChangingStatus || printer.status === "paused"}
+                    className={`flex items-center justify-center gap-2 py-2.5 rounded-lg font-medium text-sm transition-all disabled:opacity-50 ${
+                      printer.status === "paused"
+                        ? "bg-amber-500/20 text-amber-400 border-2 border-amber-500/50 ring-2 ring-amber-500/20"
+                        : "bg-secondary hover:bg-amber-500/10 text-muted-foreground hover:text-amber-400 border border-border hover:border-amber-500/30"
+                    }`}
+                  >
+                    <Pause className="w-4 h-4" />
+                    En Pausa
+                    {printer.status === "paused" && <span className="text-xs opacity-70">(actual)</span>}
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground text-center mt-2">
+                  {printer.status === "paused"
+                    ? "⏸ No se asignarán trabajos mientras esté en pausa"
+                    : "✅ Los trabajos compatibles se asignan automáticamente"}
                 </p>
               </div>
             ) : (
               <div className="text-center p-4 bg-secondary/50 rounded-lg text-sm text-muted-foreground">
-                Ninguna acción requerida
+                {printer.status === "printing"
+                  ? "Imprimiendo — esperá a que termine"
+                  : printer.status === "error"
+                  ? "Error detectado — revisá la impresora"
+                  : "Impresora desconectada"}
               </div>
             )}
           </div>

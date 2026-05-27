@@ -153,7 +153,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="PrintFarm Manager",
     description="Sistema centralizado de gestión para granja de impresión 3D",
-    version="1.1.0",
+    version="1.1.1",
     lifespan=lifespan,
 )
 
@@ -201,7 +201,7 @@ async def health_check():
     return {
         "status": "ok",
         "service": "PrintFarm Manager",
-        "version": "1.1.0",
+        "version": "1.1.1",
     }
 
 

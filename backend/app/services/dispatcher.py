@@ -87,6 +87,13 @@ class Dispatcher:
             logger.info(f"No compatible jobs found for printer {printer_id} ({printer.name})")
             return False
 
+    @staticmethod
+    def _normalize_color(color: Optional[str]) -> str:
+        """Normalize a color value for comparison: strip '#', lowercase."""
+        if not color:
+            return ""
+        return color.lstrip("#").strip().lower()
+
     def _is_compatible(
         self,
         job: PrintJob,
@@ -104,20 +111,38 @@ class Dispatcher:
             compatible_models = []
 
         if compatible_models and printer.model not in compatible_models:
+            logger.debug(
+                f"Job '{job.name}' incompatible with {printer.name}: "
+                f"model '{printer.model}' not in {compatible_models}"
+            )
             return False
 
         # 2. Check nozzle size
         if abs(job.required_nozzle - printer.nozzle_size) > 0.01:
+            logger.debug(
+                f"Job '{job.name}' incompatible with {printer.name}: "
+                f"nozzle {job.required_nozzle}mm != {printer.nozzle_size}mm"
+            )
             return False
 
         # 3. Check material (if spool is loaded)
         if spool_material and job.required_material:
             if job.required_material.upper() != spool_material:
+                logger.debug(
+                    f"Job '{job.name}' incompatible with {printer.name}: "
+                    f"material '{job.required_material}' != '{spool_material}'"
+                )
                 return False
 
         # 4. Check color (if specified and spool info available)
         if job.required_color and spool_color:
-            if job.required_color.lower() != spool_color.lower():
+            job_color = self._normalize_color(job.required_color)
+            printer_color = self._normalize_color(spool_color)
+            if job_color != printer_color:
+                logger.debug(
+                    f"Job '{job.name}' incompatible with {printer.name}: "
+                    f"color '{job_color}' != '{printer_color}'"
+                )
                 return False
 
         # 5. Check filament remaining weight
@@ -127,9 +152,10 @@ class Dispatcher:
             and spool_remaining > 0
         ):
             if job.estimated_weight_g > spool_remaining:
-                logger.info(
-                    f"Job '{job.name}' needs {job.estimated_weight_g:.0f}g but spool "
-                    f"only has {spool_remaining:.0f}g remaining — skipping"
+                logger.debug(
+                    f"Job '{job.name}' incompatible with {printer.name}: "
+                    f"needs {job.estimated_weight_g:.0f}g but spool "
+                    f"only has {spool_remaining:.0f}g remaining"
                 )
                 return False
 

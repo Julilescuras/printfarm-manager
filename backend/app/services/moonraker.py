@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import async_session
 from app.models.printer import Printer
 from app.services.telegram import telegram_notifier
+from app.services.dispatcher import dispatcher
 
 logger = logging.getLogger("printfarm.moonraker")
 
@@ -74,12 +75,17 @@ class MoonrakerClient:
                     logger.info(f"[Printer {self.printer_id}] Connected to Moonraker")
 
                     # Update printer status to indicate we're online
-                    await self._update_printer_db(status="standby")
+                    # Respect paused state — if printer was paused, keep it paused
+                    current_status = await self._get_current_status()
+                    if current_status != "paused":
+                        await self._update_printer_db(status="standby")
+                        # Auto-dispatch: try to send a pending job
+                        asyncio.create_task(self._try_auto_dispatch())
 
                     # Identify ourselves
                     await self._send_jsonrpc(ws, "server.connection.identify", {
                         "client_name": "PrintFarm Manager",
-                        "version": "1.1.0",
+                        "version": "1.1.1",
                         "type": "other",
                         "url": "http://printfarm-manager"
                     })
@@ -136,7 +142,10 @@ class MoonrakerClient:
 
         elif method == "notify_klippy_ready":
             logger.info(f"[Printer {self.printer_id}] Klipper is ready")
-            await self._update_printer_db(status="standby")
+            current_status = await self._get_current_status()
+            if current_status != "paused":
+                await self._update_printer_db(status="standby")
+                asyncio.create_task(self._try_auto_dispatch())
 
         elif method == "notify_klippy_shutdown":
             logger.warning(f"[Printer {self.printer_id}] Klipper shutdown")
@@ -209,8 +218,11 @@ class MoonrakerClient:
                         )
                 elif new_state == "standby":
                     # Only set standby if we weren't in requires_clearance
+                    # and not manually paused
                     if old_state != "complete":
-                        updates["status"] = "standby"
+                        current_db_status = await self._get_current_status()
+                        if current_db_status != "paused":
+                            updates["status"] = "standby"
                 elif new_state == "error":
                     updates["status"] = "error"
                     if old_state != "error":
@@ -244,6 +256,26 @@ class MoonrakerClient:
                     # Notify the WebSocket hub of state changes
                     if self.on_state_change:
                         await self.on_state_change(printer.to_dict())
+
+    # --- Helper methods ---
+
+    async def _get_current_status(self) -> str:
+        """Get the current status from the database."""
+        async with async_session() as session:
+            result = await session.execute(
+                select(Printer).where(Printer.id == self.printer_id)
+            )
+            printer = result.scalar_one_or_none()
+            return printer.status if printer else "offline"
+
+    async def _try_auto_dispatch(self):
+        """Try to auto-dispatch a pending job to this printer."""
+        try:
+            dispatched = await dispatcher.try_dispatch(self.printer_id)
+            if dispatched:
+                logger.info(f"[Printer {self.printer_id}] Auto-dispatched a job on connect")
+        except Exception as e:
+            logger.error(f"[Printer {self.printer_id}] Auto-dispatch error: {e}")
 
     # --- Telegram notification helpers ---
 
