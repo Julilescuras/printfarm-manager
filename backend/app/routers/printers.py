@@ -220,6 +220,12 @@ async def set_printer_status(
             status_code=400,
             detail="Cannot change status while printing"
         )
+        
+    if printer.status in ("offline", "error"):
+        raise HTTPException(
+            status_code=400,
+            detail="La impresora está desconectada o en error. Reiniciá el firmware de Klipper primero."
+        )
 
     old_status = printer.status
     printer.status = data.status
