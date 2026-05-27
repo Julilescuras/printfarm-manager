@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./data/printfarm.db"
 
     # Spoolman
-    spoolman_url: str = "http://spoolman:8000"
+    spoolman_url: str = "http://printfarm-spoolman:8000"
 
     # Printers configuration (JSON string from env)
     printers_config: str = "[]"
