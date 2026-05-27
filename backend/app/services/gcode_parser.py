@@ -88,11 +88,14 @@ def parse_gcode(file_path: str, material: str = "PLA") -> dict:
                     break
                 lines.append(line.strip())
 
-            # Also read last 300 lines (seek to end)
-            f.seek(0)
-            all_lines = f.readlines()
-            tail = [l.strip() for l in all_lines[-300:]]
-            lines.extend(tail)
+            # Efficiently read last ~10000 bytes to get the last ~300 lines without loading whole file
+            f.seek(0, 2)  # seek to end
+            file_size = f.tell()
+            chunk_size = min(10000, file_size)
+            if chunk_size > 0:
+                f.seek(file_size - chunk_size)
+                tail_lines = f.read().splitlines()
+                lines.extend([l.strip() for l in tail_lines[-300:]])
 
         for line in lines:
             if not line.startswith(";"):
