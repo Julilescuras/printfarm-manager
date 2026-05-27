@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.printer import Printer
 from app.models.maintenance import MaintenanceRecord
-from app.schemas.printer import PrinterCreate, PrinterUpdate, PrinterResponse, PrinterAssignSpool
+from app.schemas.printer import PrinterCreate, PrinterUpdate, PrinterResponse, PrinterAssignSpool, PrinterSetStatus
 from app.services.moonraker import moonraker_manager
 from app.services.dispatcher import dispatcher
 from app.ws.hub import ws_hub
@@ -191,24 +191,23 @@ async def trigger_dispatch(printer_id: int, db: AsyncSession = Depends(get_db)):
     }
 
 
-MANUAL_STATUSES = {"paused", "available", "standby"}
-
-
 @router.put("/{printer_id}/status")
 async def set_printer_status(
     printer_id: int,
-    body: dict,
+    data: PrinterSetStatus,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Manually set printer status (paused / available / standby).
-    When set to available/standby, triggers auto-dispatch.
+    Manually set printer status.
+    Allowed values: 'available', 'paused', 'requires_clearance'.
+    Cannot set to 'printing', 'error', or 'offline' (system-managed).
     """
-    new_status = body.get("status", "").strip().lower()
-    if new_status not in MANUAL_STATUSES:
+    ALLOWED_MANUAL_STATUSES = {"available", "paused", "requires_clearance"}
+    if data.status not in ALLOWED_MANUAL_STATUSES:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid status '{new_status}'. Allowed: {', '.join(sorted(MANUAL_STATUSES))}",
+            detail=f"Cannot manually set status to '{data.status}'. "
+                   f"Allowed: {', '.join(sorted(ALLOWED_MANUAL_STATUSES))}"
         )
 
     result = await db.execute(select(Printer).where(Printer.id == printer_id))
@@ -216,29 +215,43 @@ async def set_printer_status(
     if not printer:
         raise HTTPException(status_code=404, detail="Printer not found")
 
-    # Don't allow status change if printing
     if printer.status == "printing":
         raise HTTPException(
             status_code=400,
-            detail="Cannot change status while printing",
+            detail="Cannot change status while printing"
         )
 
-    printer.status = new_status
+    old_status = printer.status
+    printer.status = data.status
+
+    # If setting to available, clear bed-related fields
+    if data.status == "available":
+        printer.current_job_progress = 0.0
+        printer.current_filename = None
+        printer.thumbnail_url = None
+
     await db.commit()
     await db.refresh(printer)
 
     # Broadcast the update
     await ws_hub.broadcast_printer_update(printer.to_dict())
 
-    # If set to available or standby, try auto-dispatch
-    dispatched = False
-    if new_status in ("available", "standby"):
+    # If set to available, try to dispatch a job
+    if data.status == "available":
         dispatched = await dispatcher.try_dispatch(printer_id)
+        if dispatched:
+            return {
+                "status": "ok",
+                "old_status": old_status,
+                "new_status": "printing",
+                "message": f"Estado cambiado y trabajo asignado automáticamente",
+            }
 
     return {
         "status": "ok",
-        "printer_status": new_status,
-        "dispatched": dispatched,
+        "old_status": old_status,
+        "new_status": data.status,
+        "message": f"Estado cambiado de '{old_status}' a '{data.status}'",
     }
 
 

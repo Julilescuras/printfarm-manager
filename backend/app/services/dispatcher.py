@@ -6,13 +6,17 @@ finds the next compatible pending job in the queue, uploads the G-code
 to Moonraker, and starts the print.
 
 Matching logic:
-1. Job's compatible_models must include the printer's model
+1. Job's compatible_models must include the printer's model (case-insensitive)
 2. Job's required_nozzle must match the printer's nozzle_size
 3. Job's required_material must match the loaded spool's material
-4. Job's required_color (if set) must match the loaded spool's color
+4. Job's required_color (hex) must match the loaded spool's color_hex
 5. Job's estimated_weight_g must not exceed the spool's remaining_weight
+
+Auto-dispatch: A background loop runs every 30 seconds, scanning all
+idle printers and trying to assign them pending jobs.
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -30,9 +34,45 @@ from app.services.spoolman import spoolman_client
 
 logger = logging.getLogger("printfarm.dispatcher")
 
+AUTO_DISPATCH_INTERVAL = 30  # seconds
+
 
 class Dispatcher:
     """Handles automatic job dispatch to available printers."""
+
+    def __init__(self):
+        self._auto_dispatch_task: Optional[asyncio.Task] = None
+        self._running = False
+
+    # ── Auto-dispatch loop ──────────────────────────────────────────
+
+    async def start_auto_dispatch(self):
+        """Start the background auto-dispatch loop."""
+        self._running = True
+        self._auto_dispatch_task = asyncio.create_task(self._auto_dispatch_loop())
+        logger.info(f"Auto-dispatch loop started (interval={AUTO_DISPATCH_INTERVAL}s)")
+
+    async def stop_auto_dispatch(self):
+        """Stop the background auto-dispatch loop."""
+        self._running = False
+        if self._auto_dispatch_task:
+            self._auto_dispatch_task.cancel()
+            try:
+                await self._auto_dispatch_task
+            except asyncio.CancelledError:
+                pass
+        logger.info("Auto-dispatch loop stopped")
+
+    async def _auto_dispatch_loop(self):
+        """Periodically try to dispatch jobs to all idle printers."""
+        while self._running:
+            try:
+                await self.try_dispatch_all()
+            except Exception as e:
+                logger.error(f"Auto-dispatch error: {e}", exc_info=True)
+            await asyncio.sleep(AUTO_DISPATCH_INTERVAL)
+
+    # ── Core dispatch logic ─────────────────────────────────────────
 
     async def try_dispatch(self, printer_id: int) -> bool:
         """
@@ -51,7 +91,7 @@ class Dispatcher:
                 return False
 
             if printer.status not in ("available", "standby"):
-                logger.info(f"Printer {printer_id} is not available (status={printer.status})")
+                logger.debug(f"Printer {printer_id} is not available (status={printer.status})")
                 return False
 
             # Get the loaded spool info from Spoolman
@@ -78,21 +118,26 @@ class Dispatcher:
             )
             pending_jobs = result.scalars().all()
 
+            if not pending_jobs:
+                logger.debug(f"No pending jobs in queue for printer {printer_id} ({printer.name})")
+                return False
+
             for job in pending_jobs:
-                if self._is_compatible(job, printer, spool_material, spool_color, spool_remaining):
+                compatible, reason = self._is_compatible(
+                    job, printer, spool_material, spool_color, spool_remaining
+                )
+                if compatible:
                     success = await self._dispatch_job(session, job, printer)
                     if success:
                         return True
+                else:
+                    logger.debug(
+                        f"Job '{job.name}' (id={job.id}) not compatible with "
+                        f"printer '{printer.name}' (id={printer.id}): {reason}"
+                    )
 
             logger.info(f"No compatible jobs found for printer {printer_id} ({printer.name})")
             return False
-
-    @staticmethod
-    def _normalize_color(color: Optional[str]) -> str:
-        """Normalize a color value for comparison: strip '#', lowercase."""
-        if not color:
-            return ""
-        return color.lstrip("#").strip().lower()
 
     def _is_compatible(
         self,
@@ -101,49 +146,52 @@ class Dispatcher:
         spool_material: Optional[str],
         spool_color: Optional[str],
         spool_remaining: Optional[float],
-    ) -> bool:
-        """Check if a job is compatible with a printer's current configuration."""
+    ) -> tuple[bool, str]:
+        """
+        Check if a job is compatible with a printer's current configuration.
+        Returns (is_compatible, reason_if_not).
+        """
 
-        # 1. Check model compatibility
+        # 1. Check model compatibility (CASE-INSENSITIVE)
         try:
             compatible_models = json.loads(job.compatible_models)
         except (json.JSONDecodeError, TypeError):
             compatible_models = []
 
-        if compatible_models and printer.model not in compatible_models:
-            logger.debug(
-                f"Job '{job.name}' incompatible with {printer.name}: "
-                f"model '{printer.model}' not in {compatible_models}"
-            )
-            return False
+        if compatible_models:
+            # Normalize both sides to lowercase for comparison
+            models_lower = [m.strip().lower() for m in compatible_models]
+            if printer.model.strip().lower() not in models_lower:
+                return False, (
+                    f"Model mismatch: printer='{printer.model}' "
+                    f"not in job models={compatible_models}"
+                )
 
         # 2. Check nozzle size
         if abs(job.required_nozzle - printer.nozzle_size) > 0.01:
-            logger.debug(
-                f"Job '{job.name}' incompatible with {printer.name}: "
-                f"nozzle {job.required_nozzle}mm != {printer.nozzle_size}mm"
+            return False, (
+                f"Nozzle mismatch: job requires {job.required_nozzle}mm, "
+                f"printer has {printer.nozzle_size}mm"
             )
-            return False
 
-        # 3. Check material (if spool is loaded)
+        # 3. Check material (only if spool is loaded)
         if spool_material and job.required_material:
             if job.required_material.upper() != spool_material:
-                logger.debug(
-                    f"Job '{job.name}' incompatible with {printer.name}: "
-                    f"material '{job.required_material}' != '{spool_material}'"
+                return False, (
+                    f"Material mismatch: job requires '{job.required_material}', "
+                    f"spool has '{spool_material}'"
                 )
-                return False
 
-        # 4. Check color (if specified and spool info available)
+        # 4. Check color (hex comparison, case-insensitive)
         if job.required_color and spool_color:
-            job_color = self._normalize_color(job.required_color)
-            printer_color = self._normalize_color(spool_color)
-            if job_color != printer_color:
-                logger.debug(
-                    f"Job '{job.name}' incompatible with {printer.name}: "
-                    f"color '{job_color}' != '{printer_color}'"
+            # Normalize: strip '#' prefix and compare hex values
+            job_color = job.required_color.strip().lstrip("#").lower()
+            spool_color_clean = spool_color.strip().lstrip("#").lower()
+            if job_color != spool_color_clean:
+                return False, (
+                    f"Color mismatch: job requires '{job.required_color}', "
+                    f"spool has '{spool_color}'"
                 )
-                return False
 
         # 5. Check filament remaining weight
         if (
@@ -152,14 +200,12 @@ class Dispatcher:
             and spool_remaining > 0
         ):
             if job.estimated_weight_g > spool_remaining:
-                logger.debug(
-                    f"Job '{job.name}' incompatible with {printer.name}: "
-                    f"needs {job.estimated_weight_g:.0f}g but spool "
+                return False, (
+                    f"Weight: job needs {job.estimated_weight_g:.0f}g but spool "
                     f"only has {spool_remaining:.0f}g remaining"
                 )
-                return False
 
-        return True
+        return True, ""
 
     async def _dispatch_job(
         self, session: AsyncSession, job: PrintJob, printer: Printer
@@ -263,7 +309,7 @@ class Dispatcher:
 
     async def try_dispatch_all(self):
         """Try to dispatch jobs to ALL available/standby printers.
-        Called when new jobs are added to the queue."""
+        Called periodically by the auto-dispatch loop and when new jobs are added."""
         async with async_session() as session:
             result = await session.execute(
                 select(Printer).where(

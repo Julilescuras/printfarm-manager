@@ -27,6 +27,7 @@ from app.routers import settings_router
 from app.services.moonraker import moonraker_manager
 from app.services.monitor import monitor
 from app.services.reporter import weekly_reporter
+from app.services.dispatcher import dispatcher
 from app.ws.hub import ws_hub
 
 # Configure logging
@@ -137,12 +138,16 @@ async def lifespan(app: FastAPI):
     await weekly_reporter.start()
     logger.info("✅ Weekly reporter started")
 
+    # 7. Start auto-dispatch loop
+    await dispatcher.start_auto_dispatch()
+
     logger.info("🟢 PrintFarm Manager is ready!")
 
     yield  # App is running
 
     # Shutdown
     logger.info("🔴 PrintFarm Manager shutting down...")
+    await dispatcher.stop_auto_dispatch()
     await weekly_reporter.stop()
     await monitor.stop()
     await moonraker_manager.disconnect_all()

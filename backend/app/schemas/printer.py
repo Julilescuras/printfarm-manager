@@ -29,6 +29,10 @@ class PrinterAssignSpool(BaseModel):
     spool_id: Optional[int] = None
 
 
+class PrinterSetStatus(BaseModel):
+    status: str  # available | paused | requires_clearance
+
+
 class PrinterResponse(BaseModel):
     id: int
     name: str

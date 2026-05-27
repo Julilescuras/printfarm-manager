@@ -58,7 +58,7 @@ export const api = {
     }),
   triggerDispatch: (printerId: number) =>
     apiFetch<any>(`/api/printers/${printerId}/dispatch`, { method: "POST" }),
-  setPrinterStatus: (printerId: number, status: string) =>
+  setStatus: (printerId: number, status: string) =>
     apiFetch<any>(`/api/printers/${printerId}/status`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },

@@ -2,7 +2,6 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  compress: false, // Let reverse proxy handle compression — saves RAM on low-resource PCs
   experimental: {
     // Permite proxyar archivos GCODE grandes (500MB) sin cortarlos
     middlewareClientMaxBodySize: 500 * 1024 * 1024,

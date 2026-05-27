@@ -111,6 +111,10 @@
     @apply bg-status-standby;
   }
 
+  .status-dot-paused {
+    @apply bg-status-paused shadow-[0_0_10px_rgba(234,179,8,0.6)];
+  }
+
   .status-dot-available {
     @apply bg-status-available;
     box-shadow: 0 0 6px hsl(142, 76%, 50%);
@@ -119,11 +123,6 @@
   .status-dot-clearance {
     @apply bg-status-clearance animate-pulse-glow;
     box-shadow: 0 0 10px hsl(262, 83%, 58%);
-  }
-
-  .status-dot-paused {
-    @apply bg-status-paused;
-    box-shadow: 0 0 6px hsl(38, 92%, 50%);
   }
 
   .status-dot-error {

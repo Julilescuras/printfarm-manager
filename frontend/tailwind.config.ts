@@ -41,13 +41,13 @@ const config: Config = {
         ring: "hsl(var(--ring))",
         // Custom status colors
         status: {
-          printing: "hsl(142, 76%, 50%)",
-          standby: "hsl(210, 40%, 60%)",
-          available: "hsl(142, 76%, 50%)",
-          clearance: "hsl(262, 83%, 58%)",
-          paused: "hsl(38, 92%, 50%)",
-          error: "hsl(0, 84%, 60%)",
-          offline: "hsl(220, 13%, 40%)",
+          printing: "#22c55e",
+          standby: "#3b82f6",
+          available: "#a855f7",
+          clearance: "#f97316",
+          paused: "#eab308",
+          error: "#ef4444",
+          offline: "#6b7280",
         },
       },
       borderRadius: {
