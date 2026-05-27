@@ -10,6 +10,7 @@ provides methods to upload G-codes and start prints.
 import asyncio
 import json
 import logging
+import time
 from typing import Dict, Optional, Callable, Any
 
 import websockets
@@ -38,6 +39,12 @@ class MoonrakerClient:
         self._task: Optional[asyncio.Task] = None
         self._request_id = 0
         self._last_state: Optional[str] = None
+        
+        # Filament tracking
+        self._last_filament_used: float = 0.0
+        self._filament_used_accumulated: float = 0.0
+        self._last_spoolman_update_time: float = 0.0
+        self._syncing_filament: bool = False
 
     @property
     def is_connected(self) -> bool:
@@ -198,6 +205,25 @@ class MoonrakerClient:
         if "print_stats" in status_data:
             ps = status_data["print_stats"]
 
+            # Real-time filament tracking
+            if "filament_used" in ps:
+                current_used = float(ps["filament_used"])
+                if not getattr(self, "_filament_tracking_initialized", False):
+                    self._last_filament_used = current_used
+                    self._filament_tracking_initialized = True
+                elif current_used < self._last_filament_used:
+                    # Reset (e.g. new print started)
+                    self._last_filament_used = current_used
+                else:
+                    delta = current_used - self._last_filament_used
+                    self._filament_used_accumulated += delta
+                    self._last_filament_used = current_used
+
+                # Sync to Spoolman every 60 seconds
+                now = time.time()
+                if self._filament_used_accumulated > 0 and (now - self._last_spoolman_update_time > 60):
+                    asyncio.create_task(self._sync_filament_to_spoolman())
+
             if "filename" in ps:
                 updates["current_filename"] = ps["filename"]
 
@@ -213,6 +239,10 @@ class MoonrakerClient:
                 elif new_state == "paused":
                     updates["status"] = "printing"  # Still show as printing
                 elif new_state == "complete":
+                    # Flush any remaining filament
+                    if self._filament_used_accumulated > 0:
+                        asyncio.create_task(self._sync_filament_to_spoolman())
+                        
                     # CRITICAL BUSINESS RULE: Print done → requires clearance
                     updates["status"] = "requires_clearance"
                     updates["current_job_progress"] = 1.0
@@ -232,6 +262,10 @@ class MoonrakerClient:
                         if current_db_status not in ("paused", "available", "requires_clearance"):
                             updates["status"] = "standby"
                 elif new_state == "error":
+                    # Flush any remaining filament
+                    if self._filament_used_accumulated > 0:
+                        asyncio.create_task(self._sync_filament_to_spoolman())
+                        
                     updates["status"] = "error"
                     if old_state != "error":
                         asyncio.create_task(
@@ -260,6 +294,36 @@ class MoonrakerClient:
                 "virtual_sdcard": ["progress", "file_position", "file_path"],
             }
         })
+
+    async def _sync_filament_to_spoolman(self):
+        """Send accumulated filament usage to Spoolman."""
+        if self._filament_used_accumulated <= 0 or self._syncing_filament:
+            return
+
+        self._syncing_filament = True
+        try:
+            async with async_session() as session:
+                result = await session.execute(
+                    select(Printer).where(Printer.id == self.printer_id)
+                )
+                printer = result.scalar_one_or_none()
+                if not printer or not printer.current_spool_id:
+                    return
+                spool_id = printer.current_spool_id
+
+            amount_to_use = self._filament_used_accumulated
+            self._filament_used_accumulated = 0.0
+            self._last_spoolman_update_time = time.time()
+
+            from app.services.spoolman import spoolman_client
+            success = await spoolman_client.use_filament(spool_id, amount_to_use)
+            if not success:
+                # If it failed, add the amount back to retry later
+                self._filament_used_accumulated += amount_to_use
+        except Exception as e:
+            logger.error(f"[Printer {self.printer_id}] Filament sync error: {e}")
+        finally:
+            self._syncing_filament = False
 
     async def _update_printer_db(self, **kwargs):
         """Update the printer record in the database and notify listeners."""

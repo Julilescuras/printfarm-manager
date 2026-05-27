@@ -75,6 +75,22 @@ class SpoolmanClient:
             "vendor": spool.get("filament", {}).get("vendor", {}).get("name", "Unknown"),
         }
 
+    async def use_filament(self, spool_id: int, use_length_mm: float) -> bool:
+        """Deduct used filament length (in mm) from a spool in Spoolman."""
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                payload = {"use_length": use_length_mm}
+                response = await client.put(f"{self.api_url}/spool/{spool_id}/use", json=payload)
+                if response.status_code == 200:
+                    logger.info(f"Spoolman updated: used {use_length_mm:.1f}mm from spool {spool_id}")
+                    return True
+                else:
+                    logger.warning(f"Spoolman PUT /use returned {response.status_code}: {response.text}")
+                    return False
+        except Exception as e:
+            logger.error(f"Spoolman PUT /use error: {e}")
+            return False
+
     async def health_check(self) -> bool:
         """Check if Spoolman is reachable."""
         try:
@@ -82,8 +98,5 @@ class SpoolmanClient:
                 response = await client.get(f"{self.base_url}/api/v1/info")
                 return response.status_code == 200
         except Exception:
-            return False
-
-
-# Singleton instance
+            return False# Singleton instance
 spoolman_client = SpoolmanClient()
