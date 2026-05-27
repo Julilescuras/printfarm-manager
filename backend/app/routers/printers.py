@@ -165,6 +165,32 @@ async def clear_bed(printer_id: int, db: AsyncSession = Depends(get_db)):
     }
 
 
+@router.post("/{printer_id}/dispatch")
+async def trigger_dispatch(printer_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    🔍 Manually trigger job dispatch for an idle printer.
+    Tries to find the next compatible pending job and send it.
+    """
+    result = await db.execute(select(Printer).where(Printer.id == printer_id))
+    printer = result.scalar_one_or_none()
+    if not printer:
+        raise HTTPException(status_code=404, detail="Printer not found")
+
+    if printer.status not in ("standby", "available"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Printer is not idle (current: {printer.status})"
+        )
+
+    dispatched = await dispatcher.try_dispatch(printer_id)
+
+    return {
+        "status": "ok",
+        "dispatched": dispatched,
+        "message": "Trabajo enviado" if dispatched else "No hay trabajos compatibles en la cola",
+    }
+
+
 @router.put("/{printer_id}/spool")
 async def assign_spool(
     printer_id: int,
@@ -180,6 +206,13 @@ async def assign_spool(
     printer.current_spool_id = data.spool_id
     await db.commit()
     await db.refresh(printer)
+
+    # Inform Moonraker about the new active spool
+    moonraker_client = moonraker_manager.get_client(printer_id)
+    if moonraker_client:
+        # Don't block the API response, run the HTTP request in the background
+        import asyncio
+        asyncio.create_task(moonraker_client.set_active_spool(data.spool_id))
 
     await ws_hub.broadcast_printer_update(printer.to_dict())
 

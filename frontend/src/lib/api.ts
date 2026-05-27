@@ -56,6 +56,8 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ spool_id: spoolId }),
     }),
+  triggerDispatch: (printerId: number) =>
+    apiFetch<any>(`/api/printers/${printerId}/dispatch`, { method: "POST" }),
 
   // Queue
   getQueue: (status?: string) =>
@@ -82,6 +84,10 @@ export const api = {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(items),
+    }),
+  cloneFromHistory: (historyId: number, copies: number = 1) =>
+    apiFetch<any>(`/api/queue/history/${historyId}/clone?copies=${copies}`, {
+      method: "POST",
     }),
 
   // Maintenance

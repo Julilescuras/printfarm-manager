@@ -70,6 +70,20 @@ export default function PrinterDetailsPage() {
     }
   };
 
+  const handleTriggerDispatch = async () => {
+    try {
+      const result = await api.triggerDispatch(printer.id);
+      if (result.dispatched) {
+        // Refresh state to show the new print
+        await refreshState();
+      } else {
+        alert("No se encontraron trabajos compatibles en la cola.");
+      }
+    } catch {
+      alert("Error al buscar trabajo");
+    }
+  };
+
   const statusColors: Record<string, string> = {
     printing: "text-blue-400 bg-blue-500/20 border-blue-500/30",
     available: "text-green-400 bg-green-500/20 border-green-500/30",
@@ -171,6 +185,18 @@ export default function PrinterDetailsPage() {
               >
                 Vaciar Cama (Clear Bed)
               </button>
+            ) : printer.status === "standby" || printer.status === "available" ? (
+              <div className="space-y-3">
+                <button
+                  onClick={handleTriggerDispatch}
+                  className="w-full py-3 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg font-semibold shadow-lg shadow-primary/20 transition-all"
+                >
+                  🔍 Buscar Trabajo en Cola
+                </button>
+                <p className="text-xs text-muted-foreground text-center">
+                  Busca el próximo trabajo compatible y lo envía a esta impresora
+                </p>
+              </div>
             ) : (
               <div className="text-center p-4 bg-secondary/50 rounded-lg text-sm text-muted-foreground">
                 Ninguna acción requerida

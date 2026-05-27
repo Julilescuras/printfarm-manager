@@ -79,7 +79,7 @@ class MoonrakerClient:
                     # Identify ourselves
                     await self._send_jsonrpc(ws, "server.connection.identify", {
                         "client_name": "PrintFarm Manager",
-                        "version": "1.0.0",
+                        "version": "1.1.0",
                         "type": "other",
                         "url": "http://printfarm-manager"
                     })
@@ -354,6 +354,26 @@ class MoonrakerClient:
         except Exception as e:
             logger.warning(f"[Printer {self.printer_id}] Stats fetch error: {e}")
         return None
+
+    async def set_active_spool(self, spool_id: Optional[int]) -> bool:
+        """Set the active spool for this printer in Moonraker's Spoolman integration."""
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                # Si spool_id es None, mandamos una cadena vacía o un ID nulo para desasignar.
+                params = {"spool_id": spool_id if spool_id is not None else ""}
+                response = await client.post(
+                    f"{self.base_url}/server/spoolman/spool_id",
+                    params=params
+                )
+                if response.status_code == 200:
+                    logger.info(f"[Printer {self.printer_id}] Active spool set to {spool_id} in Moonraker")
+                    return True
+                else:
+                    logger.warning(f"[Printer {self.printer_id}] Failed to set spool in Moonraker: {response.status_code}")
+                    return False
+        except Exception as e:
+            logger.error(f"[Printer {self.printer_id}] Set active spool error: {e}")
+            return False
 
 
 class MoonrakerManager:

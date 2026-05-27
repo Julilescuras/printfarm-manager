@@ -19,6 +19,7 @@ from app.schemas.print_job import PrintJobResponse, PrintJobUpdate, PrintHistory
 from app.config import settings
 from app.ws.hub import ws_hub
 from app.services.gcode_parser import parse_gcode
+from app.services.dispatcher import dispatcher
 
 router = APIRouter(prefix="/api/queue", tags=["queue"])
 
@@ -135,6 +136,9 @@ async def add_job(
     # Notify frontends
     await ws_hub.broadcast_queue_update()
 
+    # Try to dispatch to any idle printer
+    await dispatcher.try_dispatch_all()
+
     return job
 
 
@@ -223,4 +227,74 @@ async def requeue_job(job_id: int, db: AsyncSession = Depends(get_db)):
     await db.refresh(job)
     await ws_hub.broadcast_queue_update()
 
+    # Try to dispatch to idle printers
+    await dispatcher.try_dispatch_all()
+
     return job
+
+
+@router.post("/history/{history_id}/clone", response_model=PrintJobResponse, status_code=201)
+async def clone_from_history(
+    history_id: int,
+    copies: int = 1,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Clone a job from print history back into the queue.
+    Re-uses the existing G-code file without re-uploading.
+    """
+    # Get the history entry
+    result = await db.execute(
+        select(PrintHistory).where(PrintHistory.id == history_id)
+    )
+    history_entry = result.scalar_one_or_none()
+    if not history_entry:
+        raise HTTPException(status_code=404, detail="History entry not found")
+
+    # Try to get the original job for full metadata
+    original_job = None
+    if history_entry.print_job_id:
+        result = await db.execute(
+            select(PrintJob).where(PrintJob.id == history_entry.print_job_id)
+        )
+        original_job = result.scalar_one_or_none()
+
+    if original_job:
+        # Clone from the original job record (has all metadata)
+        gcode_path = original_job.gcode_filename
+        if not os.path.exists(gcode_path):
+            raise HTTPException(
+                status_code=404,
+                detail=f"G-code file no longer exists on disk: {original_job.gcode_original_name}"
+            )
+
+        new_job = PrintJob(
+            name=original_job.name,
+            gcode_filename=original_job.gcode_filename,
+            gcode_original_name=original_job.gcode_original_name,
+            compatible_models=original_job.compatible_models,
+            required_nozzle=original_job.required_nozzle,
+            required_material=original_job.required_material,
+            required_color=original_job.required_color,
+            copies=copies,
+            priority=0,
+            estimated_time_secs=original_job.estimated_time_secs,
+            estimated_weight_g=original_job.estimated_weight_g,
+        )
+    else:
+        raise HTTPException(
+            status_code=404,
+            detail="Original job record not found — cannot clone"
+        )
+
+    db.add(new_job)
+    await db.commit()
+    await db.refresh(new_job)
+
+    # Notify frontends
+    await ws_hub.broadcast_queue_update()
+
+    # Try to dispatch to idle printers
+    await dispatcher.try_dispatch_all()
+
+    return new_job

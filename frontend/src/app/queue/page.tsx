@@ -18,6 +18,7 @@ import {
   CheckCircle,
   XCircle,
   History,
+  Copy,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { PrintJob } from "@/lib/types";
@@ -131,6 +132,18 @@ export default function QueuePage() {
     }
   };
 
+  const handleCloneFromHistory = async (historyId: number, copies: number) => {
+    try {
+      await api.cloneFromHistory(historyId, copies);
+      fetchJobs();
+      // Switch to pending tab to show the new job
+      setActiveTab("pending");
+    } catch (error: any) {
+      alert(`Error al clonar: ${error.message || error}`);
+      console.error("Error cloning from history:", error);
+    }
+  };
+
   const tabs = [
     { key: "pending", label: "Pendientes" },
     { key: "printing", label: "En Impresión" },
@@ -178,7 +191,7 @@ export default function QueuePage() {
 
       {/* History Tab */}
       {activeTab === "history" ? (
-        <HistoryTable history={history} />
+        <HistoryTable history={history} onClone={handleCloneFromHistory} />
       ) : (
         /* Job List */
         <div className="space-y-3">
@@ -243,7 +256,10 @@ export default function QueuePage() {
 }
 
 // ─── History Table ───
-function HistoryTable({ history }: { history: any[] }) {
+function HistoryTable({ history, onClone }: { history: any[]; onClone: (historyId: number, copies: number) => void }) {
+  const [cloningId, setCloningId] = useState<number | null>(null);
+  const [cloneCopies, setCloneCopies] = useState(1);
+
   if (history.length === 0) {
     return (
       <div className="glass-card p-12 text-center">
@@ -254,6 +270,12 @@ function HistoryTable({ history }: { history: any[] }) {
       </div>
     );
   }
+
+  const handleClone = (historyId: number) => {
+    onClone(historyId, cloneCopies);
+    setCloningId(null);
+    setCloneCopies(1);
+  };
 
   return (
     <div className="glass-card overflow-hidden">
@@ -268,6 +290,7 @@ function HistoryTable({ history }: { history: any[] }) {
               <th className="p-3 font-medium">Duración</th>
               <th className="p-3 font-medium">Fecha</th>
               <th className="p-3 font-medium">Resultado</th>
+              <th className="p-3 font-medium text-center">Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -300,6 +323,46 @@ function HistoryTable({ history }: { history: any[] }) {
                   ) : (
                     <span className="text-muted-foreground">{entry.result}</span>
                   )}
+                </td>
+                <td className="p-3">
+                  <div className="flex items-center justify-center gap-1">
+                    {cloningId === entry.id ? (
+                      <div className="flex items-center gap-2 animate-in fade-in">
+                        <input
+                          type="number"
+                          min={1}
+                          max={100}
+                          value={cloneCopies}
+                          onChange={(e) => setCloneCopies(parseInt(e.target.value) || 1)}
+                          className="w-14 px-2 py-1 rounded bg-secondary border border-border text-xs text-center focus:border-primary outline-none"
+                          title="Cantidad de copias"
+                        />
+                        <button
+                          onClick={() => handleClone(entry.id)}
+                          className="px-2 py-1 rounded bg-primary/20 text-primary text-xs font-medium hover:bg-primary/30 transition-colors border border-primary/30"
+                          title="Confirmar"
+                        >
+                          Agregar
+                        </button>
+                        <button
+                          onClick={() => { setCloningId(null); setCloneCopies(1); }}
+                          className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                          title="Cancelar"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setCloningId(entry.id)}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-primary hover:bg-primary/10 border border-transparent hover:border-primary/30 transition-all"
+                        title="Agregar tarea igual a la cola"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        Repetir
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

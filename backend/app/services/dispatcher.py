@@ -50,7 +50,7 @@ class Dispatcher:
                 logger.error(f"Printer {printer_id} not found")
                 return False
 
-            if printer.status != "available":
+            if printer.status not in ("available", "standby"):
                 logger.info(f"Printer {printer_id} is not available (status={printer.status})")
                 return False
 
@@ -234,6 +234,20 @@ class Dispatcher:
                         f"Job '{job.name}' completed copy {job.copies_completed}/{job.copies}"
                     )
                 await session.commit()
+
+    async def try_dispatch_all(self):
+        """Try to dispatch jobs to ALL available/standby printers.
+        Called when new jobs are added to the queue."""
+        async with async_session() as session:
+            result = await session.execute(
+                select(Printer).where(
+                    Printer.status.in_(["available", "standby"])
+                )
+            )
+            idle_printers = result.scalars().all()
+
+        for printer in idle_printers:
+            await self.try_dispatch(printer.id)
 
 
 # Singleton
