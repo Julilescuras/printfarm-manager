@@ -94,6 +94,3 @@ volumes:
 networks:
   printfarm:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.30.0.0/24
