@@ -123,9 +123,9 @@ export default function SettingsPage() {
             }}
           >
             <span
-              className="absolute top-0.5 w-6 h-6 bg-white rounded-full shadow-md transition-transform duration-300 flex items-center justify-center"
+              className="absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-md transition-transform duration-300 flex items-center justify-center"
               style={{
-                transform: theme === "dark" ? "translateX(28px)" : "translateX(2px)",
+                transform: theme === "dark" ? "translateX(28px)" : "translateX(0px)",
               }}
             >
               {theme === "dark" ? (
@@ -161,9 +161,9 @@ export default function SettingsPage() {
             }}
           >
             <span
-              className="absolute top-0.5 w-6 h-6 bg-white rounded-full shadow-md transition-transform duration-300"
+              className="absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-md transition-transform duration-300"
               style={{
-                transform: telegramEnabled ? "translateX(28px)" : "translateX(2px)",
+                transform: telegramEnabled ? "translateX(28px)" : "translateX(0px)",
               }}
             />
           </button>
