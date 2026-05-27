@@ -87,6 +87,9 @@ class MoonrakerClient:
                         "url": "http://printfarm-manager"
                     })
 
+                    # Check current Klipper state explicitly on connection
+                    await self._send_jsonrpc(ws, "server.info")
+
                     # Subscribe to printer objects for real-time updates
                     await self._send_jsonrpc(ws, "printer.objects.subscribe", {
                         "objects": {
@@ -138,6 +141,16 @@ class MoonrakerClient:
             params = data.get("params", [])
             if params and isinstance(params[0], dict):
                 await self._process_status_update(params[0])
+                
+        elif "result" in data and isinstance(data["result"], dict) and "klippy_state" in data["result"]:
+            # Handle response from server.info
+            klippy_state = data["result"]["klippy_state"]
+            if klippy_state in ("error", "shutdown"):
+                logger.warning(f"[Printer {self.printer_id}] Klipper is in error state on connect")
+                await self._update_printer_db(status="error")
+            elif klippy_state == "disconnected":
+                logger.warning(f"[Printer {self.printer_id}] Klipper is disconnected on connect")
+                await self._update_printer_db(status="offline")
 
         elif method == "notify_klippy_ready":
             logger.info(f"[Printer {self.printer_id}] Klipper is ready")
