@@ -34,13 +34,14 @@ class MoonrakerClient:
         self.on_state_change = on_state_change
         self._ws = None
         self._running = False
+        self._connected = False
         self._task: Optional[asyncio.Task] = None
         self._request_id = 0
         self._last_state: Optional[str] = None
 
     @property
     def is_connected(self) -> bool:
-        return self._ws is not None and self._ws.open
+        return self._connected
 
     def _next_id(self) -> int:
         self._request_id += 1
@@ -71,6 +72,7 @@ class MoonrakerClient:
             try:
                 async with websockets.connect(self.ws_url, ping_interval=20) as ws:
                     self._ws = ws
+                    self._connected = True
                     logger.info(f"[Printer {self.printer_id}] Connected to Moonraker")
 
                     # Update printer status to indicate we're online
@@ -107,6 +109,8 @@ class MoonrakerClient:
                 await self._update_printer_db(status="offline")
             except Exception as e:
                 logger.error(f"[Printer {self.printer_id}] Unexpected error: {e}", exc_info=True)
+            finally:
+                self._connected = False
 
             if self._running:
                 await asyncio.sleep(5)  # Wait before reconnecting
