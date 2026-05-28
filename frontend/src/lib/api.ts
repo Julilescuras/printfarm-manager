@@ -2,7 +2,14 @@
  * API Client — Base fetch wrapper for backend API calls.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+let API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+if (typeof window !== "undefined") {
+  if (API_BASE.includes("localhost") && window.location.hostname !== "localhost") {
+    API_BASE = API_BASE.replace("localhost", window.location.hostname);
+  } else if (!API_BASE) {
+    API_BASE = `http://${window.location.hostname}:8000`;
+  }
+}
 
 export async function apiFetch<T>(
   path: string,
