@@ -304,7 +304,7 @@ export default function FilamentPage() {
               <p className="text-sm text-muted-foreground mt-1">
                 Verificá que el contenedor de Spoolman esté corriendo en{" "}
                 <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">
-                  http://tu-servidor:7912
+                  {typeof window !== 'undefined' ? `http://${window.location.hostname}:7912` : 'http://tu-servidor:7912'}
                 </code>
               </p>
             </div>
