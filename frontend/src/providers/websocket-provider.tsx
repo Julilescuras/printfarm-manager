@@ -29,7 +29,10 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const reconnectTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const connect = useCallback(() => {
-    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || `ws://${window.location.hostname}:8000/ws`;
+    let wsUrl = process.env.NEXT_PUBLIC_WS_URL || `ws://${window.location.hostname}:8000/ws`;
+    if (typeof window !== "undefined" && wsUrl.includes("localhost") && window.location.hostname !== "localhost") {
+      wsUrl = wsUrl.replace("localhost", window.location.hostname);
+    }
 
     try {
       const ws = new WebSocket(wsUrl);
