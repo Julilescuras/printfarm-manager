@@ -43,6 +43,7 @@ class MoonrakerClient:
         # Filament tracking
         self._last_filament_used: float = 0.0
         self._filament_used_accumulated: float = 0.0
+        self._last_display_progress: float = 0.0
         self._last_spoolman_update_time: float = 0.0
         self._syncing_filament: bool = False
 
@@ -191,17 +192,22 @@ class MoonrakerClient:
                 updates["bed_target"] = round(bed["target"], 1)
 
         # Extract print progress
-        # 1. First, set from virtual_sdcard (byte progress)
-        if "virtual_sdcard" in status_data:
-            vsd = status_data["virtual_sdcard"]
-            if "progress" in vsd and vsd["progress"] is not None:
-                updates["current_job_progress"] = round(vsd["progress"], 4)
-
-        # 2. Overwrite with display_status (M73 slicer progress) if available and > 0, as it's more accurate
+        # Track display_status (M73) progress
         if "display_status" in status_data:
             ds = status_data["display_status"]
-            if "progress" in ds and ds["progress"] is not None and ds["progress"] > 0:
-                updates["current_job_progress"] = round(ds["progress"], 4)
+            if "progress" in ds and ds["progress"] is not None:
+                self._last_display_progress = ds["progress"]
+
+        # Base progress from virtual_sdcard (often byte-based and less accurate)
+        if "virtual_sdcard" in status_data:
+            vs = status_data["virtual_sdcard"]
+            if "progress" in vs and vs["progress"] is not None:
+                if self._last_display_progress <= 0:
+                    updates["current_job_progress"] = round(vs["progress"], 4)
+                
+        # Overwrite with display_status if available and > 0, as it's more accurate
+        if self._last_display_progress > 0:
+            updates["current_job_progress"] = round(self._last_display_progress, 4)
 
         # Extract print stats (state changes are critical!)
         if "print_stats" in status_data:
@@ -245,13 +251,28 @@ class MoonrakerClient:
                     if self._filament_used_accumulated > 0:
                         asyncio.create_task(self._sync_filament_to_spoolman())
                         
-                    # CRITICAL BUSINESS RULE: Print done → requires clearance
+                    # CRITICAL BUSINESS RULE: Print done -> requires clearance
                     updates["status"] = "requires_clearance"
                     updates["current_job_progress"] = 1.0
                     if old_state != "complete":
                         logger.info(
-                            f"[Printer {self.printer_id}] Print COMPLETE → requires_clearance"
+                            f"[Printer {self.printer_id}] Print COMPLETE -> requires_clearance"
                         )
+                        # Accumulate maintenance hours using latest DB total_print_time_secs
+                        from app.services.monitor import monitor
+                        from app.database import async_session
+                        from sqlalchemy import select
+                        from app.models.printer import Printer
+                        
+                        async def update_maint_hours():
+                            async with async_session() as session:
+                                result = await session.execute(select(Printer).where(Printer.id == self.printer_id))
+                                printer = result.scalar_one_or_none()
+                                if printer and printer.total_print_time_secs > 0:
+                                    await monitor.update_print_hours(self.printer_id, float(printer.total_print_time_secs))
+                        
+                        asyncio.create_task(update_maint_hours())
+                        
                         # Send Telegram notification
                         asyncio.create_task(
                             self._notify_print_complete()
