@@ -93,7 +93,7 @@ class MoonrakerClient:
                     # Identify ourselves
                     await self._send_jsonrpc(ws, "server.connection.identify", {
                         "client_name": "PrintFarm Manager",
-                        "version": "1.2.0",
+                        "version": "1.2.1",
                         "type": "other",
                         "url": "http://printfarm-manager"
                     })
@@ -443,18 +443,21 @@ class MoonrakerClient:
 
     # --- HTTP API methods for file operations and print control ---
 
-    async def upload_gcode(self, file_path: str, filename: str) -> bool:
-        """Upload a G-code file to Moonraker via HTTP POST."""
+    async def upload_gcode(self, file_path: str, filename: str, folder: str = "") -> bool:
+        """Upload a G-code file to Moonraker via HTTP POST, optionally into a subfolder."""
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 with open(file_path, "rb") as f:
                     files = {"file": (filename, f, "application/octet-stream")}
+                    data = {"path": folder} if folder else {}
                     response = await client.post(
                         f"{self.base_url}/server/files/upload",
-                        files=files
+                        files=files,
+                        data=data,
                     )
                     if response.status_code == 201:
-                        logger.info(f"[Printer {self.printer_id}] Uploaded {filename}")
+                        dest = f"{folder}/{filename}" if folder else filename
+                        logger.info(f"[Printer {self.printer_id}] Uploaded {dest}")
                         return True
                     else:
                         logger.error(
