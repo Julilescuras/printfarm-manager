@@ -241,17 +241,26 @@ export default function MaintenancePage() {
 
   useEffect(() => {
     fetchRecords();
-    // Expand all printers by default
-    // (will update when printers load)
   }, [fetchRecords]);
 
-  // Remove auto-expand so they are collapsed by default
+  // Auto-expand printers that have active alerts
 
   useEffect(() => {
     const handler = () => fetchRecords();
     window.addEventListener("maintenance-updated", handler);
     return () => window.removeEventListener("maintenance-updated", handler);
   }, [fetchRecords]);
+
+  // When records load, auto-expand printers that have active alerts
+  useEffect(() => {
+    if (records.length === 0) return;
+    const printerIdsWithAlerts = new Set(
+      records.filter((r) => r.is_alert_active).map((r) => r.printer_id)
+    );
+    if (printerIdsWithAlerts.size > 0) {
+      setExpandedPrinters(printerIdsWithAlerts);
+    }
+  }, [records]);
 
   const handleReset = async (record: MaintenanceRecord, note: string) => {
     try {
@@ -325,7 +334,7 @@ export default function MaintenancePage() {
                       <span className={printer.extruder_type === "bowden" ? "text-amber-400" : "text-primary"}>
                         {printer.extruder_type === "bowden" ? "Bowden" : "Direct Drive"}
                       </span>
-                      {" · "}Horas totales: {formatHours(printer.total_print_time_secs / 3600)}
+                      {" · "}Horas acumuladas: {formatHours(printer.lifetime_print_seconds / 3600)}
                     </p>
                   </div>
                 </div>

@@ -43,6 +43,7 @@ class Printer(Base):
     thumbnail_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     camera_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     total_print_time_secs: Mapped[int] = mapped_column(Integer, default=0)
+    lifetime_print_seconds: Mapped[int] = mapped_column(Integer, default=0)
     eta_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Timestamps
@@ -76,6 +77,7 @@ class Printer(Base):
             "thumbnail_url": self.thumbnail_url,
             "camera_url": self.camera_url,
             "total_print_time_secs": self.total_print_time_secs,
+            "lifetime_print_seconds": self.lifetime_print_seconds,
             "eta_seconds": self.eta_seconds,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,

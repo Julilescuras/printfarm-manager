@@ -288,7 +288,8 @@ function HistoryTable({ history, onClone }: { history: any[]; onClone: (historyI
               <th className="p-3 font-medium">Material</th>
               <th className="p-3 font-medium">Filamento</th>
               <th className="p-3 font-medium">Duración</th>
-              <th className="p-3 font-medium">Fecha</th>
+              <th className="p-3 font-medium">Iniciado</th>
+              <th className="p-3 font-medium">Completado</th>
               <th className="p-3 font-medium">Resultado</th>
               <th className="p-3 font-medium text-center">Acciones</th>
             </tr>
@@ -301,6 +302,16 @@ function HistoryTable({ history, onClone }: { history: any[]; onClone: (historyI
                 <td className="p-3 text-muted-foreground">{entry.material || "-"}</td>
                 <td className="p-3 text-muted-foreground">{formatWeight(entry.estimated_weight_g)}</td>
                 <td className="p-3 text-muted-foreground">{formatDuration(entry.duration_secs)}</td>
+                <td className="p-3 text-muted-foreground">
+                  {entry.started_at
+                    ? new Date(entry.started_at).toLocaleDateString("es-AR", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : "-"}
+                </td>
                 <td className="p-3 text-muted-foreground">
                   {entry.completed_at
                     ? new Date(entry.completed_at).toLocaleDateString("es-AR", {
