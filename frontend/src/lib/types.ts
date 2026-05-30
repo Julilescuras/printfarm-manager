@@ -21,6 +21,7 @@ export interface PrinterState {
   thumbnail_url: string | null;
   camera_url: string | null;
   total_print_time_secs: number;
+  lifetime_print_seconds: number;
   eta_seconds: number | null;
   created_at: string | null;
   updated_at: string | null;
@@ -51,6 +52,7 @@ export interface PrintJob {
   priority: number;
   status: JobStatus;
   assigned_printer_id: number | null;
+  started_at: string | null;
   created_at: string | null;
   updated_at: string | null;
 }
