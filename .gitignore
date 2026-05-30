@@ -1,14 +1,38 @@
+# Dependencies
 node_modules/
+.venv/
+
+# Build outputs
 .next/
 __pycache__/
 *.pyc
+*.pyo
+
+# Environment (secrets)
 .env
+
+# Runtime data
 backend/data/printfarm.db
 backend/data/*.db-shm
 backend/data/*.db-wal
 backend/gcodes/
 *.db
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Local backups
 backup/
-.venv/
+
+# Hardware / personal configs (no van al repo)
+camara_nebula.yaml
+*.cfg
+.esphome/
+check_moonraker.py
+backend/check_db.py
+
+# Docs personales
+PROYECTO.md
 GUIA_DEPLOY.md
+*.txt
