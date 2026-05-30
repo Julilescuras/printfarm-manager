@@ -128,10 +128,15 @@ export const PrinterCard = React.memo(function PrinterCard({ printer, onUpdate }
         </div>
       ) : null}
 
-      {/* Nozzle */}
+      {/* Nozzle + elapsed time when printing */}
       <div className="text-xs text-muted-foreground">
-        Boquilla: {printer.nozzle_size}mm • Horas:{" "}
-        {formatDuration(printer.total_print_time_secs)}
+        Boquilla: {printer.nozzle_size}mm
+        {printer.status === "printing" && printer.total_print_time_secs > 0 && (
+          <> • Transcurrido: {formatDuration(printer.total_print_time_secs)}</>
+        )}
+        {printer.status !== "printing" && printer.lifetime_print_seconds > 0 && (
+          <> • Total: {formatDuration(printer.lifetime_print_seconds)}</>
+        )}
       </div>
 
       {/* 🧹 CLEAR BED BUTTON — Only visible when requires_clearance */}
