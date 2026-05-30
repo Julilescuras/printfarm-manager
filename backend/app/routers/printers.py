@@ -58,6 +58,11 @@ async def create_printer(data: PrinterCreate, db: AsyncSession = Depends(get_db)
         ("belt_tension", 500.0),
         ("z_screw_lube", 300.0),
         ("bed_cleaning", 50.0),
+        ("lubrication", 200.0),
+        ("bed_leveling", 100.0),
+        ("extruder_gears", 400.0),
+        ("hotend_cleaning", 300.0),
+        ("firmware_check", 1000.0),
     ]
     if printer.extruder_type == "bowden":
         default_records.append(("ptfe_tube", 400.0))
