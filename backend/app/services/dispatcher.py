@@ -242,6 +242,7 @@ class Dispatcher:
         # Update job status
         job.status = "printing"
         job.assigned_printer_id = printer.id
+        job.started_at = datetime.now(timezone.utc)
 
         # Update printer status
         printer.status = "printing"
@@ -292,6 +293,7 @@ class Dispatcher:
                     gcode_filename=job.gcode_original_name,
                     material=job.required_material,
                     estimated_weight_g=job.estimated_weight_g,
+                    started_at=job.started_at,
                     completed_at=datetime.now(timezone.utc),
                     duration_secs=printer.total_print_time_secs if printer else None,
                     result="success",
