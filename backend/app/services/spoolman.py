@@ -98,5 +98,8 @@ class SpoolmanClient:
                 response = await client.get(f"{self.base_url}/api/v1/info")
                 return response.status_code == 200
         except Exception:
-            return False# Singleton instance
+            return False
+
+
+# Singleton instance
 spoolman_client = SpoolmanClient()

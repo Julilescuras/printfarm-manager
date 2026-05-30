@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.config import settings
 from app.models.printer import Printer
 from app.models.maintenance import MaintenanceRecord
 from app.schemas.printer import PrinterCreate, PrinterUpdate, PrinterResponse, PrinterAssignSpool, PrinterSetStatus
@@ -52,26 +53,13 @@ async def create_printer(data: PrinterCreate, db: AsyncSession = Depends(get_db)
     db.add(printer)
     await db.flush()  # To get printer.id
 
-    # Create default maintenance records
-    default_records = [
-        ("nozzle_change", 200.0),
-        ("belt_tension", 500.0),
-        ("z_screw_lube", 300.0),
-        ("bed_cleaning", 50.0),
-        ("lubrication", 200.0),
-        ("bed_leveling", 100.0),
-        ("extruder_gears", 400.0),
-        ("hotend_cleaning", 300.0),
-        ("firmware_check", 1000.0),
-    ]
-    if printer.extruder_type == "bowden":
-        default_records.append(("ptfe_tube", 400.0))
-
-    for m_type, threshold in default_records:
+    # Create default maintenance records — single source of truth in config,
+    # so web-created printers match those seeded from PRINTERS_CONFIG.
+    for item in settings.get_maintenance_defaults(printer.extruder_type):
         record = MaintenanceRecord(
             printer_id=printer.id,
-            maintenance_type=m_type,
-            threshold_hours=threshold,
+            maintenance_type=item["type"],
+            threshold_hours=item["hours"],
             last_reset_at=datetime.now(timezone.utc),
         )
         db.add(record)
