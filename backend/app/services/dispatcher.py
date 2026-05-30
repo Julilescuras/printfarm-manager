@@ -31,6 +31,7 @@ from app.models.printer import Printer
 from app.models.print_job import PrintJob, PrintHistory
 from app.services.moonraker import moonraker_manager
 from app.services.spoolman import spoolman_client
+from app.config import settings
 
 logger = logging.getLogger("printfarm.dispatcher")
 
@@ -221,23 +222,25 @@ class Dispatcher:
 
         gcode_path = job.gcode_filename
         gcode_name = os.path.basename(gcode_path)
+        upload_folder = settings.moonraker_upload_folder
+        moonraker_path = f"{upload_folder}/{gcode_name}" if upload_folder else gcode_name
 
         # Upload G-code to Moonraker
         if not os.path.exists(gcode_path):
             logger.error(f"G-code file not found: {gcode_path}")
             return False
 
-        uploaded = await client.upload_gcode(gcode_path, gcode_name)
+        uploaded = await client.upload_gcode(gcode_path, gcode_name, folder=upload_folder)
         if not uploaded:
             return False
 
         # Start the print
-        started = await client.start_print(gcode_name)
+        started = await client.start_print(moonraker_path)
         if not started:
             return False
 
         # Try to get thumbnail
-        thumbnail = await client.get_thumbnail_url(gcode_name)
+        thumbnail = await client.get_thumbnail_url(moonraker_path)
 
         # Update job status
         job.status = "printing"
