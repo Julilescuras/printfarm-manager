@@ -45,6 +45,7 @@ class PrintJob(Base):
     assigned_printer_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("printers.id"), nullable=True
     )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
@@ -73,6 +74,7 @@ class PrintJob(Base):
             "priority": self.priority,
             "status": self.status,
             "assigned_printer_id": self.assigned_printer_id,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

@@ -61,6 +61,7 @@ async def init_db():
             ("print_history", "estimated_weight_g", "REAL"),
             ("print_history", "duration_secs", "INTEGER"),
             ("print_history", "result", "VARCHAR(50) NOT NULL DEFAULT 'success'"),
+            ("print_jobs", "started_at", "DATETIME"),
         ]
         for table, column, col_type in migrations:
             try:
