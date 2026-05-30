@@ -93,7 +93,7 @@ class MoonrakerClient:
                     # Identify ourselves
                     await self._send_jsonrpc(ws, "server.connection.identify", {
                         "client_name": "PrintFarm Manager",
-                        "version": "1.1.1",
+                        "version": "1.2.0",
                         "type": "other",
                         "url": "http://printfarm-manager"
                     })
