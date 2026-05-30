@@ -41,6 +41,7 @@ class PrintJobResponse(BaseModel):
     priority: int
     status: str
     assigned_printer_id: Optional[int]
+    started_at: Optional[datetime]
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
 

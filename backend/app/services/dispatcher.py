@@ -300,6 +300,10 @@ class Dispatcher:
                 )
                 session.add(history)
 
+                # Accumulate lifetime print hours on the printer
+                if printer and history.duration_secs:
+                    printer.lifetime_print_seconds = (printer.lifetime_print_seconds or 0) + history.duration_secs
+
                 if job.copies_completed >= job.copies:
                     job.status = "completed"
                     logger.info(f"Job '{job.name}' completed all {job.copies} copies")

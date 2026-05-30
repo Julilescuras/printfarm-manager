@@ -54,6 +54,7 @@ class PrinterResponse(BaseModel):
     current_filename: Optional[str]
     thumbnail_url: Optional[str]
     total_print_time_secs: int
+    lifetime_print_seconds: int
     eta_seconds: Optional[int]
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
