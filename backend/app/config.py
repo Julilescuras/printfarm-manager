@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     # G-code storage
     gcodes_path: str = "/app/gcodes"
 
+    # Subfolder used inside each Moonraker printer's gcodes directory
+    moonraker_upload_folder: str = "3Dprint-manager"
+
     # ─── Maintenance defaults (hours) ────────────────────────────────────────
     # Universal (all extruder types)
     default_nozzle_threshold: float = 200.0
