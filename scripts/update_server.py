@@ -18,9 +18,11 @@ def update_server():
         print("Conectado exitosamente. Ejecutando git pull && docker compose up -d --build...")
         
         # Ejecutar comandos directamente para ver donde falla
+        # Ya no compilamos en el servidor: las imágenes se construyen en
+        # GitHub Actions y se publican en GHCR. Acá solo se descargan.
         commands = [
             'cd printfarm-manager && git pull',
-            'cd printfarm-manager && docker compose build',
+            'cd printfarm-manager && docker compose pull',
             'cd printfarm-manager && docker compose up -d'
         ]
         
