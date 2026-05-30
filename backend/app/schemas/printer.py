@@ -12,6 +12,7 @@ class PrinterCreate(BaseModel):
     nozzle_size: float = 0.4
     extruder_type: str = "direct_drive"  # direct_drive | bowden
     fluidd_url: Optional[str] = None
+    camera_url: Optional[str] = None
     current_spool_id: Optional[int] = None
 
 
@@ -22,6 +23,7 @@ class PrinterUpdate(BaseModel):
     nozzle_size: Optional[float] = None
     extruder_type: Optional[str] = None
     fluidd_url: Optional[str] = None
+    camera_url: Optional[str] = None
     current_spool_id: Optional[int] = None
 
 
@@ -41,6 +43,7 @@ class PrinterResponse(BaseModel):
     nozzle_size: float
     extruder_type: str
     fluidd_url: Optional[str]
+    camera_url: Optional[str]
     current_spool_id: Optional[int]
     status: str
     current_job_progress: float

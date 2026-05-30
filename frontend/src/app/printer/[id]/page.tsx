@@ -10,6 +10,7 @@ import {
   FileCode,
   ExternalLink,
   X,
+  Video,
 } from "lucide-react";
 import { useWSContext } from "@/providers/websocket-provider";
 import { api } from "@/lib/api";
@@ -274,6 +275,34 @@ export default function PrinterDetailsPage() {
             </div>
           )}
         </div>
+
+        {/* Camera Feed */}
+        {printer.camera_url && (
+          <div className="glass-card p-6 md:col-span-3">
+            <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
+              <Video className="w-5 h-5 text-primary" /> Cámara en vivo
+            </h2>
+            <div className="rounded-lg overflow-hidden bg-black aspect-video flex items-center justify-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={printer.camera_url}
+                alt="Camera feed"
+                className="w-full h-full object-contain"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = "none";
+                  (e.currentTarget.nextSibling as HTMLElement).style.display = "flex";
+                }}
+              />
+              <div
+                className="hidden flex-col items-center gap-2 text-muted-foreground text-sm"
+              >
+                <Video className="w-8 h-8 opacity-40" />
+                <span>No se puede conectar a la cámara</span>
+                <span className="text-xs font-mono opacity-60">{printer.camera_url}</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Bottom Span: Spoolman Details */}
         <div className="glass-card p-6 md:col-span-3">
