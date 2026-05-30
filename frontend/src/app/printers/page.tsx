@@ -178,6 +178,7 @@ function PrinterModal({
     printer?.extruder_type || "direct_drive"
   );
   const [fluiddUrl, setFluiddUrl] = useState(printer?.fluidd_url || "");
+  const [cameraUrl, setCameraUrl] = useState(printer?.camera_url || "");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -191,6 +192,7 @@ function PrinterModal({
       nozzle_size: parseFloat(nozzle),
       extruder_type: extruderType,
       fluidd_url: fluiddUrl || null,
+      camera_url: cameraUrl || null,
     };
 
     try {
@@ -308,6 +310,23 @@ function PrinterModal({
             />
             <p className="text-xs text-muted-foreground mt-1">
               Ej: la IP del Sonic Pad o la URL de Fluidd de la Elegoo
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1.5">
+              URL Cámara (stream MJPEG)
+              <span className="text-muted-foreground font-normal ml-1">(opcional)</span>
+            </label>
+            <input
+              type="url"
+              value={cameraUrl}
+              onChange={(e) => setCameraUrl(e.target.value)}
+              placeholder="http://192.168.1.101:8080/stream"
+              className="w-full px-3 py-2 rounded-lg bg-secondary border border-border focus:border-primary outline-none"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Ej: ESP32-CAM en la misma red local
             </p>
           </div>
 

@@ -19,6 +19,7 @@ export interface PrinterState {
   bed_target: number;
   current_filename: string | null;
   thumbnail_url: string | null;
+  camera_url: string | null;
   total_print_time_secs: number;
   eta_seconds: number | null;
   created_at: string | null;
