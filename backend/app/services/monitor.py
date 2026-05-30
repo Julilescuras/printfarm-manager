@@ -53,7 +53,13 @@ class Monitor:
             await asyncio.sleep(settings.monitor_poll_interval)
 
     async def _check_maintenance_alerts(self):
-        """Check all maintenance records against their thresholds."""
+        """Check all maintenance records against their thresholds.
+
+        This loop is the single source of truth for alert transitions: it
+        detects when accumulated hours cross the threshold, fires the Telegram
+        notification once, and pushes a maintenance update to the frontend.
+        """
+        any_change = False
         async with async_session() as session:
             # Get all printers with their total print time
             result = await session.execute(select(Printer))
@@ -72,15 +78,20 @@ class Monitor:
                 records = result.scalars().all()
 
                 for record in records:
-                    # Calculate accumulated hours based on printer's total_print_time
                     # The accumulated_hours delta is tracked from the last reset
                     accumulated_hours = record.accumulated_hours
 
                     # Check threshold
                     was_active = record.is_alert_active
-                    record.is_alert_active = accumulated_hours >= record.threshold_hours
+                    is_active = accumulated_hours >= record.threshold_hours
 
-                    if record.is_alert_active and not was_active:
+                    if is_active == was_active:
+                        continue  # No transition — nothing to persist
+
+                    record.is_alert_active = is_active
+                    any_change = True
+
+                    if is_active:
                         logger.warning(
                             f"⚠️ MAINTENANCE ALERT: {printer.name} — "
                             f"{record.maintenance_type} at {accumulated_hours:.1f}h "
@@ -95,7 +106,14 @@ class Monitor:
                             )
                         )
 
+            # Only write to the DB when an alert state actually changed
+            if any_change:
                 await session.commit()
+
+        # Notify connected frontends outside the DB session
+        if any_change:
+            from app.ws.hub import ws_hub
+            await ws_hub.broadcast_maintenance_update()
 
     async def update_print_hours(self, printer_id: int, print_duration_secs: float):
         """
@@ -114,8 +132,9 @@ class Monitor:
 
             for record in records:
                 record.accumulated_hours += hours
-                if record.accumulated_hours >= record.threshold_hours:
-                    record.is_alert_active = True
+                # NOTE: we intentionally do NOT flip is_alert_active here.
+                # The monitor loop owns alert transitions so it can fire the
+                # Telegram notification exactly once when the threshold is crossed.
 
             await session.commit()
             logger.info(
