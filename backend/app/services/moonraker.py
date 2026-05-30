@@ -47,6 +47,9 @@ class MoonrakerClient:
         self._last_spoolman_update_time: float = 0.0
         self._syncing_filament: bool = False
 
+        # ETA tracking
+        self._last_print_duration: float = 0.0
+
     @property
     def is_connected(self) -> bool:
         return self._connected
@@ -236,6 +239,7 @@ class MoonrakerClient:
                 updates["current_filename"] = ps["filename"]
 
             if "total_duration" in ps:
+                self._last_print_duration = float(ps["total_duration"])
                 updates["total_print_time_secs"] = int(ps["total_duration"])
 
             if "state" in ps:
@@ -244,6 +248,10 @@ class MoonrakerClient:
 
                 if new_state == "printing":
                     updates["status"] = "printing"
+                    if self._last_state not in ("printing", "paused"):
+                        # New print started — reset ETA trackers
+                        self._last_print_duration = 0.0
+                        self._last_display_progress = 0.0
                 elif new_state == "paused":
                     updates["status"] = "printing"  # Still show as printing
                 elif new_state == "complete":
@@ -296,6 +304,15 @@ class MoonrakerClient:
                         )
 
                 self._last_state = new_state
+
+        # Calculate ETA from elapsed duration and progress
+        progress = self._last_display_progress
+        if progress > 0.01 and self._last_print_duration > 0:
+            estimated_total = self._last_print_duration / progress
+            remaining = estimated_total - self._last_print_duration
+            updates["eta_seconds"] = max(0, int(remaining))
+        elif updates.get("status") in ("standby", "available", "requires_clearance", "error", "offline", "complete"):
+            updates["eta_seconds"] = None
 
         if updates:
             # Never override 'paused' status from Moonraker state changes
