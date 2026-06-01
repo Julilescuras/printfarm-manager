@@ -155,7 +155,7 @@ export default function QueuePage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gradient">Cola de Impresión</h1>
           <p className="text-sm text-muted-foreground mt-1">
@@ -164,7 +164,7 @@ export default function QueuePage() {
         </div>
         <button
           onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors"
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors self-start sm:self-auto shrink-0"
         >
           <Plus className="w-4 h-4" />
           Nuevo Trabajo
@@ -172,12 +172,12 @@ export default function QueuePage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 p-1 bg-secondary/50 rounded-lg w-fit">
+      <div className="flex gap-1 p-1 bg-secondary/50 rounded-lg w-full sm:w-fit overflow-x-auto custom-scrollbar">
         {tabs.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-all whitespace-nowrap shrink-0 ${
               activeTab === tab.key
                 ? "bg-card text-foreground shadow-md"
                 : "text-muted-foreground hover:text-foreground"
