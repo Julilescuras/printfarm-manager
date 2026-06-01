@@ -4,15 +4,13 @@ services:
   # ─────────────────────────────────────────────
   backend:
     image: ghcr.io/julilescuras/printfarm-backend:latest
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
     container_name: printfarm-backend
     ports:
       - "8000:8000"
     volumes:
-      - ./backend/data:/app/data        # SQLite persistence
-      - ./backend/gcodes:/app/gcodes    # G-code file storage
+      - ./backend/data:/app/data               # SQLite persistence
+      - ./backend/gcodes:/app/gcodes           # G-code file storage
+      - /var/run/docker.sock:/var/run/docker.sock  # 1-click update (Linux only)
     env_file:
       - .env
     depends_on:
@@ -42,9 +40,6 @@ services:
   # ─────────────────────────────────────────────
   frontend:
     image: ghcr.io/julilescuras/printfarm-frontend:latest
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
     container_name: printfarm-frontend
     ports:
       - "3000:3000"

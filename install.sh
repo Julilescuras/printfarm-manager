@@ -83,23 +83,53 @@ mkdir -p backend/gcodes
 echo -e "  ${GREEN}✓${NC} backend/data/ (SQLite)"
 echo -e "  ${GREEN}✓${NC} backend/gcodes/ (Archivos G-code)"
 
-# ─── Step 5: Build images ───────────────────────────
-echo -e "\n${CYAN}[5/6]${NC} Construyendo imágenes Docker (esto puede tomar unos minutos)..."
+# ─── Step 5: Pull images from GHCR ─────────────────
+echo -e "\n${CYAN}[5/7]${NC} Descargando imágenes Docker desde GHCR (2-3 min)..."
 echo ""
 
-$COMPOSE_CMD build --no-cache
+$COMPOSE_CMD pull
 
 echo ""
-echo -e "  ${GREEN}✓${NC} Imágenes construidas correctamente"
+echo -e "  ${GREEN}✓${NC} Imágenes descargadas correctamente"
 
 # ─── Step 6: Start services ─────────────────────────
-echo -e "\n${CYAN}[6/6]${NC} Iniciando servicios..."
+echo -e "\n${CYAN}[6/7]${NC} Iniciando servicios..."
 echo ""
 
 $COMPOSE_CMD up -d
 
+# Record initial installed commit
+git rev-parse HEAD > backend/data/installed_commit.txt 2>/dev/null || true
+
 echo ""
 echo -e "  ${GREEN}✓${NC} Servicios iniciados"
+
+# ─── Step 7: Configure update watchdog ─────────────
+echo -e "\n${CYAN}[7/7]${NC} Configurando vigilante de actualizaciones automáticas..."
+
+PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+WATCHDOG_SCRIPT="/usr/local/bin/printfarm-watchdog.sh"
+
+cat > "$WATCHDOG_SCRIPT" << WATCHDOG_EOF
+#!/bin/bash
+# PrintFarm Manager — Update watchdog (ejecutado por cron cada minuto)
+FLAG="${PROJECT_DIR}/backend/data/.update_requested"
+LOG="/var/log/printfarm-update.log"
+if [ -f "\$FLAG" ]; then
+    echo "\$(date): Actualización solicitada desde el frontend, ejecutando update.sh..." >> "\$LOG"
+    rm -f "\$FLAG"
+    cd "${PROJECT_DIR}" && bash update.sh >> "\$LOG" 2>&1
+    echo "\$(date): update.sh finalizado." >> "\$LOG"
+fi
+WATCHDOG_EOF
+
+chmod +x "$WATCHDOG_SCRIPT"
+
+# Add or replace the crontab entry (runs every minute)
+(crontab -l 2>/dev/null | grep -v "printfarm-watchdog"; echo "* * * * * $WATCHDOG_SCRIPT") | crontab -
+
+echo -e "  ${GREEN}✓${NC} Watchdog configurado en cron (cada minuto)"
+echo -e "  ${BLUE}ℹ${NC}  Log de actualizaciones: /var/log/printfarm-update.log"
 
 # ─── Summary ────────────────────────────────────────
 echo ""
@@ -122,7 +152,7 @@ echo "║  Comandos útiles:                                     ║"
 echo "║  • Ver logs:     docker compose logs -f               ║"
 echo "║  • Reiniciar:    docker compose restart               ║"
 echo "║  • Detener:      docker compose down                  ║"
-echo "║  • Actualizar:   git pull && docker compose up -d --build"
+echo "║  • Actualizar:   ./update.sh  (o desde el frontend)"
 echo "║                                                       ║"
 echo "╚═══════════════════════════════════════════════════════╝"
 echo -e "${NC}"
