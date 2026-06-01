@@ -104,7 +104,7 @@ async def apply_update() -> dict:
     _update_in_progress = True
     _update_log.clear()
     asyncio.create_task(_update_task())
-    return {
+    return {  # noqa: RET504
         "status": "started",
         "message": (
             "Actualización iniciada. El frontend se reiniciará en ~30s, "
@@ -126,13 +126,23 @@ def _test_docker_socket():
     """Raise RuntimeError if the Docker socket is not accessible."""
     import docker
     try:
-        client = docker.DockerClient(base_url="unix://var/run/docker.sock")
-        client.ping()
+        _docker_client().ping()
     except Exception as exc:
         raise RuntimeError(
             "Socket de Docker no disponible. "
             "Verificá que /var/run/docker.sock esté montado en el contenedor."
         ) from exc
+
+
+def _docker_client():
+    """Return a DockerClient that loads credentials from the mounted config."""
+    import docker
+    # from_env() reads DOCKER_HOST and ~/.docker/config.json (GHCR creds).
+    # Falls back to the unix socket if DOCKER_HOST is not set.
+    try:
+        return docker.from_env()
+    except Exception:
+        return docker.DockerClient(base_url="unix://var/run/docker.sock")
 
 
 async def _update_task():
@@ -149,10 +159,8 @@ async def _update_task():
 
 def _run_update_sync():
     """Blocking update logic — runs in a thread executor."""
-    import docker
-
     _log("Conectando con el demonio de Docker...")
-    client = docker.DockerClient(base_url="unix://var/run/docker.sock")
+    client = _docker_client()
 
     # ── 1. Pull all images ────────────────────────────────────────────────────
     for service, image in IMAGES.items():

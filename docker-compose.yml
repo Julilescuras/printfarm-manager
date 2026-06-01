@@ -11,6 +11,7 @@ services:
       - ./backend/data:/app/data               # SQLite persistence
       - ./backend/gcodes:/app/gcodes           # G-code file storage
       - /var/run/docker.sock:/var/run/docker.sock  # 1-click update (Linux only)
+      - ${HOME}/.docker:/root/.docker:ro       # GHCR credentials for 1-click update
     env_file:
       - .env
     depends_on:
