@@ -11,17 +11,43 @@ if (typeof window !== "undefined") {
   }
 }
 
+// Default request timeout (ms). File uploads (FormData) are exempt because
+// they can legitimately take much longer than a normal API call.
+const DEFAULT_TIMEOUT_MS = 20_000;
+
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${API_BASE}${path}`;
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      ...options.headers,
-    },
-  });
+
+  // Abort the request if it hangs, so the UI never waits forever on an
+  // unreachable backend. Skip for FormData (large uploads) and when the
+  // caller already provided its own signal.
+  const isUpload = typeof FormData !== "undefined" && options.body instanceof FormData;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  let signal = options.signal ?? undefined;
+  if (!signal && !isUpload && typeof AbortController !== "undefined") {
+    const controller = new AbortController();
+    signal = controller.signal;
+    timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      signal,
+      headers: { ...options.headers },
+    });
+  } catch (err: any) {
+    if (err?.name === "AbortError") {
+      throw new Error("La solicitud tardó demasiado y fue cancelada.");
+    }
+    throw err;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: response.statusText }));
@@ -35,6 +61,19 @@ export async function apiFetch<T>(
   }
 
   return response.json();
+}
+
+// ── Spool cache ────────────────────────────────────────────────────────────
+// The dashboard renders one card per printer and each used to fetch its spool
+// independently, causing N parallel/duplicate requests. This caches results for
+// a short TTL and de-dupes concurrent fetches of the same spool id.
+const SPOOL_CACHE_TTL_MS = 30_000;
+const spoolCache = new Map<number, { ts: number; data: any }>();
+const spoolInflight = new Map<number, Promise<any>>();
+
+export function invalidateSpoolCache(id?: number) {
+  if (id === undefined) spoolCache.clear();
+  else spoolCache.delete(id);
 }
 
 export const api = {
@@ -62,6 +101,11 @@ export const api = {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ spool_id: spoolId }),
+    }).then((res) => {
+      // Spool assignment changed — drop any stale cached spool data.
+      if (spoolId != null) invalidateSpoolCache(spoolId);
+      else invalidateSpoolCache();
+      return res;
     }),
   triggerDispatch: (printerId: number) =>
     apiFetch<any>(`/api/printers/${printerId}/dispatch`, { method: "POST" }),
@@ -135,6 +179,26 @@ export const api = {
   getSpoolmanHealth: () => apiFetch<any>("/api/spoolman/health"),
   getSpools: () => apiFetch<any[]>("/api/spoolman/spools"),
   getSpool: (id: number) => apiFetch<any>(`/api/spoolman/spools/${id}`),
+  // Cached + de-duped variant — use in UI that renders many cards at once.
+  getSpoolCached: (id: number): Promise<any> => {
+    const cached = spoolCache.get(id);
+    if (cached && Date.now() - cached.ts < SPOOL_CACHE_TTL_MS) {
+      return Promise.resolve(cached.data);
+    }
+    const inflight = spoolInflight.get(id);
+    if (inflight) return inflight;
+
+    const promise = apiFetch<any>(`/api/spoolman/spools/${id}`)
+      .then((data) => {
+        spoolCache.set(id, { ts: Date.now(), data });
+        return data;
+      })
+      .finally(() => {
+        spoolInflight.delete(id);
+      });
+    spoolInflight.set(id, promise);
+    return promise;
+  },
   getFilaments: () => apiFetch<any[]>("/api/spoolman/filaments"),
 
   // Settings
