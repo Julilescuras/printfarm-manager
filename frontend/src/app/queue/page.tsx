@@ -93,11 +93,19 @@ export default function QueuePage() {
     fetchJobs();
   }, [fetchJobs]);
 
-  // Listen for WebSocket queue updates
+  // Listen for WebSocket queue updates — debounced so a burst of events
+  // (e.g. several jobs dispatched at once) triggers a single refetch.
   useEffect(() => {
-    const handler = () => fetchJobs();
+    let debounce: ReturnType<typeof setTimeout> | undefined;
+    const handler = () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(() => fetchJobs(), 300);
+    };
     window.addEventListener("queue-updated", handler);
-    return () => window.removeEventListener("queue-updated", handler);
+    return () => {
+      clearTimeout(debounce);
+      window.removeEventListener("queue-updated", handler);
+    };
   }, [fetchJobs]);
 
   const handleCancel = async (id: number) => {
