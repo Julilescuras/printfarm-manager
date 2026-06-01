@@ -148,6 +148,11 @@ export const api = {
   testTelegram: () =>
     apiFetch<any>("/api/settings/telegram/test", { method: "POST" }),
 
+  // System updates
+  checkUpdate: () => apiFetch<any>("/api/settings/update-check"),
+  applyUpdate: () => apiFetch<any>("/api/settings/update-apply", { method: "POST" }),
+  getUpdateStatus: () => apiFetch<any>("/api/settings/update-status"),
+
   // System
   getSystemStatus: () => apiFetch<any>("/api/status"),
 };
