@@ -61,6 +61,27 @@ export const THEME_PRESETS: ThemePreset[] = [
     isDark: true,
     swatch: { bg: "#0f1a14", primary: "#34c759", accent: "#e8a23d" },
   },
+  {
+    id: "matcha",
+    label: "Matcha",
+    description: "Verde matcha oscuro con miel — café japonés nocturno",
+    isDark: true,
+    swatch: { bg: "#0f1a12", primary: "#5e9e72", accent: "#c4a04e" },
+  },
+  {
+    id: "blush",
+    label: "Blush",
+    description: "Rosa polvorienta y crema cálida — aesthetic luminoso",
+    isDark: false,
+    swatch: { bg: "#faf5f6", primary: "#c4637a", accent: "#b07040" },
+  },
+  {
+    id: "mocha",
+    label: "Moca",
+    description: "Espresso oscuro con caramelo y rosa — rincón acogedor",
+    isDark: true,
+    swatch: { bg: "#161009", primary: "#c49040", accent: "#a85070" },
+  },
 ];
 
 /* ──────────────────────────────────────────────────────────────────────────
