@@ -138,6 +138,69 @@
     --ring: 322 90% 58%;
   }
 
+  /* ── Matcha (cozy dark — Japanese tea house) ── */
+  [data-theme="matcha"] {
+    --background: 135 22% 9%;
+    --foreground: 40 28% 87%;
+    --card: 138 18% 12%;
+    --card-foreground: 40 28% 87%;
+    --primary: 140 28% 52%;
+    --primary-foreground: 135 22% 8%;
+    --secondary: 138 14% 17%;
+    --secondary-foreground: 40 28% 87%;
+    --muted: 138 14% 17%;
+    --muted-foreground: 120 8% 58%;
+    --accent: 43 50% 58%;
+    --accent-foreground: 135 22% 8%;
+    --destructive: 0 65% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 138 13% 21%;
+    --input: 138 13% 21%;
+    --ring: 140 28% 52%;
+  }
+
+  /* ── Blush (cozy light — dusty rose aesthetic) ── */
+  [data-theme="blush"] {
+    --background: 350 40% 97%;
+    --foreground: 345 20% 20%;
+    --card: 350 60% 99%;
+    --card-foreground: 345 20% 20%;
+    --primary: 342 42% 58%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 345 20% 91%;
+    --secondary-foreground: 345 20% 20%;
+    --muted: 345 16% 89%;
+    --muted-foreground: 345 8% 48%;
+    --accent: 26 52% 52%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 345 18% 86%;
+    --input: 345 18% 86%;
+    --ring: 342 42% 58%;
+  }
+
+  /* ── Moca (cozy dark — espresso coffee shop) ── */
+  [data-theme="mocha"] {
+    --background: 25 22% 8%;
+    --foreground: 34 32% 86%;
+    --card: 24 20% 11%;
+    --card-foreground: 34 32% 86%;
+    --primary: 36 55% 55%;
+    --primary-foreground: 25 22% 8%;
+    --secondary: 24 16% 17%;
+    --secondary-foreground: 34 32% 86%;
+    --muted: 24 16% 17%;
+    --muted-foreground: 30 10% 58%;
+    --accent: 334 30% 55%;
+    --accent-foreground: 25 22% 8%;
+    --destructive: 0 65% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 24 14% 21%;
+    --input: 24 14% 21%;
+    --ring: 36 55% 55%;
+  }
+
   /* ── Forest (warm dark green) ── */
   [data-theme="forest"] {
     --background: 150 20% 9%;
