@@ -245,7 +245,7 @@ export default function SettingsPage() {
           </button>
           <button
             onClick={handleApplyUpdate}
-            disabled={isUpdating || isCheckingUpdate || !updateInfo || updateInfo.up_to_date === true}
+            disabled={isUpdating || isCheckingUpdate || !updateInfo || !updateInfo.check_ok || updateInfo.up_to_date === true}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white font-medium text-sm hover:bg-emerald-500 transition-colors disabled:opacity-50"
           >
             {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
