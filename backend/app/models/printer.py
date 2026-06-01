@@ -24,6 +24,10 @@ class Printer(Base):
         String(20), default="direct_drive",
         comment="direct_drive | bowden"
     )
+    filament_tracking_mode: Mapped[str] = mapped_column(
+        String(20), default="manager",
+        comment="manager | moonraker"
+    )
     fluidd_url: Mapped[str | None] = mapped_column(
         String(255), nullable=True,
         comment="Optional direct link to Fluidd/Mainsail/Sonic Pad interface for this printer"
@@ -66,6 +70,7 @@ class Printer(Base):
             "nozzle_size": self.nozzle_size,
             "current_spool_id": self.current_spool_id,
             "extruder_type": self.extruder_type,
+            "filament_tracking_mode": self.filament_tracking_mode,
             "fluidd_url": self.fluidd_url,
             "status": self.status,
             "current_job_progress": self.current_job_progress,

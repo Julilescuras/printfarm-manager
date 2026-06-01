@@ -11,6 +11,7 @@ class PrinterCreate(BaseModel):
     moonraker_url: str
     nozzle_size: float = 0.4
     extruder_type: str = "direct_drive"  # direct_drive | bowden
+    filament_tracking_mode: str = "manager"  # manager | moonraker
     fluidd_url: Optional[str] = None
     camera_url: Optional[str] = None
     current_spool_id: Optional[int] = None
@@ -22,6 +23,7 @@ class PrinterUpdate(BaseModel):
     moonraker_url: Optional[str] = None
     nozzle_size: Optional[float] = None
     extruder_type: Optional[str] = None
+    filament_tracking_mode: Optional[str] = None  # manager | moonraker
     fluidd_url: Optional[str] = None
     camera_url: Optional[str] = None
     current_spool_id: Optional[int] = None
@@ -42,6 +44,7 @@ class PrinterResponse(BaseModel):
     moonraker_url: str
     nozzle_size: float
     extruder_type: str
+    filament_tracking_mode: str
     fluidd_url: Optional[str]
     camera_url: Optional[str]
     current_spool_id: Optional[int]

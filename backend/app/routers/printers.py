@@ -47,7 +47,9 @@ async def create_printer(data: PrinterCreate, db: AsyncSession = Depends(get_db)
         moonraker_url=data.moonraker_url,
         nozzle_size=data.nozzle_size,
         extruder_type=data.extruder_type,
+        filament_tracking_mode=data.filament_tracking_mode,
         fluidd_url=data.fluidd_url,
+        camera_url=data.camera_url,
         current_spool_id=data.current_spool_id,
     )
     db.add(printer)
