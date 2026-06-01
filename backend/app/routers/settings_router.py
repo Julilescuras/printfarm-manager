@@ -1,9 +1,9 @@
 """
-Settings Router — Manage application settings (Telegram, theme, etc.)
+Settings Router — Manage application settings (Telegram, theme, updates, etc.)
 """
 
 from typing import Dict
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -58,3 +58,29 @@ async def test_telegram():
     if success:
         return {"status": "ok", "message": "Mensaje de prueba enviado correctamente"}
     return {"status": "error", "message": "No se pudo enviar. Verificá el Bot Token y Chat ID."}
+
+
+# ─── System Update Endpoints ──────────────────────────────────────────────────
+
+@router.get("/update-check")
+async def check_update():
+    """Query GitHub for the latest commit and compare with the installed version."""
+    from app.services.updater import check_for_updates
+    return await check_for_updates()
+
+
+@router.post("/update-apply")
+async def apply_update():
+    """Pull new Docker images, recreate the frontend, and flag the backend for restart."""
+    from app.services.updater import apply_update as _apply
+    try:
+        return await _apply()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+
+@router.get("/update-status")
+async def update_status():
+    """Return the current update log and whether an update is in progress."""
+    from app.services.updater import get_update_status
+    return get_update_status()
