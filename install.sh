@@ -113,13 +113,15 @@ WATCHDOG_SCRIPT="/usr/local/bin/printfarm-watchdog.sh"
 cat > "$WATCHDOG_SCRIPT" << WATCHDOG_EOF
 #!/bin/bash
 # PrintFarm Manager — Update watchdog (ejecutado por cron cada minuto)
+# NO borra la banderita: de eso se encarga update.sh, y SOLO si tuvo éxito.
+# Así, si una actualización falla, la banderita persiste y se reintenta el
+# próximo minuto (update.sh tiene su propio lock anti-concurrencia).
 FLAG="${PROJECT_DIR}/backend/data/.update_requested"
 LOG="/var/log/printfarm-update.log"
 if [ -f "\$FLAG" ]; then
     echo "\$(date): Actualización solicitada desde el frontend, ejecutando update.sh..." >> "\$LOG"
-    rm -f "\$FLAG"
     cd "${PROJECT_DIR}" && bash update.sh >> "\$LOG" 2>&1
-    echo "\$(date): update.sh finalizado." >> "\$LOG"
+    echo "\$(date): update.sh finalizó con código \$?." >> "\$LOG"
 fi
 WATCHDOG_EOF
 
