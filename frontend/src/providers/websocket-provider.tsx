@@ -27,6 +27,9 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const [isConnected, setIsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Guards against zombie reconnects after the provider unmounts: once false,
+  // onclose/onerror handlers stop scheduling new connection attempts.
+  const shouldReconnect = useRef(true);
 
   const connect = useCallback(() => {
     let wsUrl = process.env.NEXT_PUBLIC_WS_URL || `ws://${window.location.hostname}:8000/ws`;
@@ -76,17 +79,21 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
       ws.onclose = () => {
         setIsConnected(false);
-        console.log("[WS] Disconnected, reconnecting in 3s...");
-        reconnectTimeout.current = setTimeout(connect, 3000);
+        if (shouldReconnect.current) {
+          console.log("[WS] Disconnected, reconnecting in 3s...");
+          reconnectTimeout.current = setTimeout(connect, 3000);
+        }
       };
 
       ws.onerror = (error) => {
         console.error("[WS] Error:", error);
-        ws.close();
+        ws.close(); // triggers onclose, which decides whether to reconnect
       };
     } catch (e) {
       console.error("[WS] Connection failed:", e);
-      reconnectTimeout.current = setTimeout(connect, 3000);
+      if (shouldReconnect.current) {
+        reconnectTimeout.current = setTimeout(connect, 3000);
+      }
     }
   }, []);
 
@@ -97,8 +104,10 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    shouldReconnect.current = true;
     connect();
     return () => {
+      shouldReconnect.current = false;
       clearTimeout(reconnectTimeout.current);
       wsRef.current?.close();
     };

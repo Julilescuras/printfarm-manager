@@ -31,7 +31,7 @@ export default function PrinterDetailsPage() {
   useEffect(() => {
     if (printer?.current_spool_id && (!spoolInfo || spoolInfo.id !== printer.current_spool_id)) {
       setIsLoadingSpool(true);
-      api.getSpool(printer.current_spool_id)
+      api.getSpoolCached(printer.current_spool_id)
         .then((data) => setSpoolInfo(data))
         .catch((err) => console.error("Error fetching spool info:", err))
         .finally(() => setIsLoadingSpool(false));
