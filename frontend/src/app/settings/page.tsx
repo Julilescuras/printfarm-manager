@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Sun,
   Moon,
@@ -11,6 +11,10 @@ import {
   MessageSquare,
   ExternalLink,
   Loader2,
+  RefreshCw,
+  Download,
+  Search,
+  GitCommit,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useTheme } from "@/providers/theme-provider";
@@ -27,8 +31,18 @@ export default function SettingsPage() {
   const [testMessage, setTestMessage] = useState("");
   const [isLoading, setIsLoading] = useState(true);
 
+  // ── Update state ──────────────────────────────────────────────────────────
+  const [updateInfo, setUpdateInfo] = useState<any>(null);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [updateLog, setUpdateLog] = useState<string[]>([]);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const logEndRef = useRef<HTMLDivElement | null>(null);
+
   useEffect(() => {
     loadSettings();
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
 
   const loadSettings = async () => {
@@ -61,6 +75,57 @@ export default function SettingsPage() {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleCheckUpdate = async () => {
+    setIsCheckingUpdate(true);
+    setUpdateError(null);
+    try {
+      const data = await api.checkUpdate();
+      setUpdateInfo(data);
+      if (!data.check_ok) setUpdateError(data.error || "Error al verificar actualizaciones");
+    } catch (err: any) {
+      setUpdateError(err.message || "Error de conexión");
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
+
+  const handleApplyUpdate = async () => {
+    if (!window.confirm("¿Querés actualizar el sistema ahora? El frontend se reiniciará en ~30s y el backend en ~60s.")) return;
+    setIsUpdating(true);
+    setUpdateLog([]);
+    setUpdateError(null);
+
+    try {
+      await api.applyUpdate();
+    } catch (err: any) {
+      setUpdateError(err.message || "Error al iniciar la actualización");
+      setIsUpdating(false);
+      return;
+    }
+
+    // Poll progress every 3 seconds
+    const maxPolls = 60; // 3 minutes max
+    let polls = 0;
+    pollRef.current = setInterval(async () => {
+      polls++;
+      try {
+        const status = await api.getUpdateStatus();
+        setUpdateLog(status.log || []);
+        setTimeout(() => logEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+        if (!status.in_progress || polls >= maxPolls) {
+          clearInterval(pollRef.current!);
+          pollRef.current = null;
+          setIsUpdating(false);
+          // Refresh update info
+          const fresh = await api.checkUpdate();
+          setUpdateInfo(fresh);
+        }
+      } catch {
+        // Backend may be restarting — keep polling
+      }
+    }, 3000);
   };
 
   const handleTestTelegram = async () => {
@@ -135,6 +200,119 @@ export default function SettingsPage() {
               )}
             </span>
           </button>
+        </div>
+      </div>
+
+      {/* System Update Section */}
+      <div className="glass-card p-6 space-y-4">
+        <h2 className="text-lg font-semibold flex items-center gap-2">
+          <RefreshCw className="w-5 h-5 text-emerald-400" />
+          Actualización del Sistema
+        </h2>
+
+        {/* Version info */}
+        {updateInfo && (
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Versión instalada:</span>
+              <span className="font-mono font-semibold">{updateInfo.current_version}</span>
+            </div>
+            {updateInfo.installed_commit && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground flex items-center gap-1">
+                  <GitCommit className="w-3 h-3" /> Commit instalado:
+                </span>
+                <span className="font-mono text-xs text-muted-foreground">{updateInfo.installed_commit}</span>
+              </div>
+            )}
+            {updateInfo.latest_commit && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground flex items-center gap-1">
+                  <GitCommit className="w-3 h-3" /> Último en GitHub:
+                </span>
+                <span className="font-mono text-xs text-muted-foreground">{updateInfo.latest_commit}</span>
+              </div>
+            )}
+            {updateInfo.latest_message && (
+              <div className="text-xs text-muted-foreground bg-secondary/50 p-2 rounded-lg border border-border">
+                {updateInfo.latest_message}
+              </div>
+            )}
+
+            {/* Status badge */}
+            {updateInfo.up_to_date === true && (
+              <div className="flex items-center gap-2 text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-2.5">
+                <Check className="w-4 h-4 shrink-0" />
+                El sistema está al día
+              </div>
+            )}
+            {updateInfo.up_to_date === false && (
+              <div className="flex items-center gap-2 text-sm text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5">
+                <Download className="w-4 h-4 shrink-0" />
+                Hay una actualización disponible
+              </div>
+            )}
+            {updateInfo.up_to_date === null && updateInfo.check_ok && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground bg-secondary/50 border border-border rounded-lg p-2.5">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                Primera vez — instalá el commit SHA con <code className="text-xs bg-secondary px-1 rounded">./update.sh</code>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Error */}
+        {updateError && (
+          <div className="flex items-center gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-2.5">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            {updateError}
+          </div>
+        )}
+
+        {/* Action buttons */}
+        <div className="flex gap-3 flex-wrap">
+          <button
+            onClick={handleCheckUpdate}
+            disabled={isCheckingUpdate || isUpdating}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary border border-border font-medium text-sm hover:bg-secondary/80 transition-colors disabled:opacity-50"
+          >
+            {isCheckingUpdate ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+            Buscar actualizaciones
+          </button>
+          <button
+            onClick={handleApplyUpdate}
+            disabled={isUpdating || isCheckingUpdate || !updateInfo || updateInfo.up_to_date === true}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white font-medium text-sm hover:bg-emerald-500 transition-colors disabled:opacity-50"
+          >
+            {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            {isUpdating ? "Actualizando..." : "Actualizar ahora"}
+          </button>
+        </div>
+
+        {/* Progress log */}
+        {updateLog.length > 0 && (
+          <div className="bg-black/40 border border-border rounded-lg p-3 max-h-44 overflow-y-auto">
+            <p className="text-xs text-muted-foreground mb-2 font-semibold">Progreso:</p>
+            {updateLog.map((line, i) => (
+              <div
+                key={i}
+                className={`text-xs font-mono leading-5 ${
+                  line.startsWith("✓") ? "text-emerald-400" :
+                  line.startsWith("✗") || line.startsWith("ERROR") ? "text-red-400" :
+                  line.startsWith("⚠") ? "text-amber-400" :
+                  "text-muted-foreground"
+                }`}
+              >
+                {line}
+              </div>
+            ))}
+            <div ref={logEndRef} />
+          </div>
+        )}
+
+        {/* Info box */}
+        <div className="p-3 rounded-lg bg-secondary/50 border border-border text-xs text-muted-foreground">
+          Las imágenes se compilan automáticamente en GitHub Actions al hacer push. La actualización descarga la imagen pre-compilada (~2-3 min en lugar de 25 min).
         </div>
       </div>
 
