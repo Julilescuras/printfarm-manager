@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
   ListOrdered,
@@ -13,6 +14,7 @@ import {
   WifiOff,
 } from "lucide-react";
 import { useWSContext } from "@/providers/websocket-provider";
+import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -27,6 +29,13 @@ const navItems = [
 export function Sidebar() {
   const pathname = usePathname();
   const { printers, activeAlerts, isConnected } = useWSContext();
+  const [version, setVersion] = useState<string>("");
+
+  useEffect(() => {
+    api.getSystemStatus()
+      .then((data) => { if (data?.version) setVersion(data.version); })
+      .catch(() => {});
+  }, []);
 
   const printingCount = printers.filter((p) => p.status === "printing").length;
   const clearanceCount = printers.filter(
@@ -43,7 +52,9 @@ export function Sidebar() {
           </div>
           <div>
             <h1 className="text-lg font-bold text-gradient">PrintFarm</h1>
-            <p className="text-xs text-muted-foreground">Manager v1.2.1</p>
+            <p className="text-xs text-muted-foreground">
+              Manager {version ? `v${version}` : ""}
+            </p>
           </div>
         </div>
       </div>

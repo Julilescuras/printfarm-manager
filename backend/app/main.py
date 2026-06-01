@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 
 from app.config import settings
+from app.version import APP_VERSION
 from app.database import init_db, async_session
 from app.models.printer import Printer
 from app.models.maintenance import MaintenanceRecord
@@ -158,7 +159,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="PrintFarm Manager",
     description="Sistema centralizado de gestión para granja de impresión 3D",
-    version="1.3.0",
+    version=APP_VERSION,
     lifespan=lifespan,
 )
 
@@ -206,7 +207,7 @@ async def health_check():
     return {
         "status": "ok",
         "service": "PrintFarm Manager",
-        "version": "1.3.0",
+        "version": APP_VERSION,
     }
 
 
@@ -224,6 +225,7 @@ async def system_status():
     connected = sum(1 for p in all_printers if p.status != "offline")
 
     return {
+        "version": APP_VERSION,
         "printers_total": len(all_printers),
         "printers_connected": connected,
         "spoolman_connected": spoolman_ok,
