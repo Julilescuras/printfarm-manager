@@ -19,10 +19,9 @@ from pathlib import Path
 from typing import Optional
 
 import httpx
+from app.version import APP_VERSION
 
 logger = logging.getLogger("printfarm.updater")
-
-APP_VERSION = "1.3.0"
 GITHUB_REPO = "julilescuras/printfarm-manager"
 UPDATE_FLAG_FILE = Path("/app/data/.update_requested")
 INSTALLED_COMMIT_FILE = Path("/app/data/installed_commit.txt")

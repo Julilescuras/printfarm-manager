@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import async_session
 from app.models.printer import Printer
 from app.services.telegram import telegram_notifier
+from app.version import APP_VERSION
 
 logger = logging.getLogger("printfarm.moonraker")
 
@@ -93,7 +94,7 @@ class MoonrakerClient:
                     # Identify ourselves
                     await self._send_jsonrpc(ws, "server.connection.identify", {
                         "client_name": "PrintFarm Manager",
-                        "version": "1.3.0",
+                        "version": APP_VERSION,
                         "type": "other",
                         "url": "http://printfarm-manager"
                     })
