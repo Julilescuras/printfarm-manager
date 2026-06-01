@@ -9,6 +9,7 @@ export interface PrinterState {
   moonraker_url: string;
   nozzle_size: number;
   extruder_type: "direct_drive" | "bowden";
+  filament_tracking_mode: "manager" | "moonraker";
   fluidd_url: string | null;
   current_spool_id: number | null;
   status: PrinterStatus;

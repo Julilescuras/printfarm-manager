@@ -93,7 +93,7 @@ class MoonrakerClient:
                     # Identify ourselves
                     await self._send_jsonrpc(ws, "server.connection.identify", {
                         "client_name": "PrintFarm Manager",
-                        "version": "1.2.1",
+                        "version": "1.2.2",
                         "type": "other",
                         "url": "http://printfarm-manager"
                     })
@@ -349,6 +349,14 @@ class MoonrakerClient:
                 printer = result.scalar_one_or_none()
                 if not printer or not printer.current_spool_id:
                     return
+
+                # If the printer's native Moonraker/Spoolman integration handles
+                # filament tracking, discard the accumulated amount and let it manage.
+                if printer.filament_tracking_mode == "moonraker":
+                    self._filament_used_accumulated = 0.0
+                    self._last_spoolman_update_time = time.time()
+                    return
+
                 spool_id = printer.current_spool_id
 
             amount_to_use = self._filament_used_accumulated

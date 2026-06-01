@@ -112,6 +112,12 @@ export default function PrintersPage() {
                 <span className="text-muted-foreground">URL Moonraker:</span>
                 <span className="font-mono text-xs truncate max-w-[160px]">{printer.moonraker_url}</span>
               </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Filamento:</span>
+                <span className={`text-xs font-medium ${printer.filament_tracking_mode === "moonraker" ? "text-emerald-400" : "text-primary"}`}>
+                  {printer.filament_tracking_mode === "moonraker" ? "Nativo Moonraker" : "PrintFarm Manager"}
+                </span>
+              </div>
               {printer.fluidd_url && (
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">Interfaz:</span>
@@ -177,6 +183,9 @@ function PrinterModal({
   const [extruderType, setExtruderType] = useState<"direct_drive" | "bowden">(
     printer?.extruder_type || "direct_drive"
   );
+  const [filamentTrackingMode, setFilamentTrackingMode] = useState<"manager" | "moonraker">(
+    printer?.filament_tracking_mode || "manager"
+  );
   const [fluiddUrl, setFluiddUrl] = useState(printer?.fluidd_url || "");
   const [cameraUrl, setCameraUrl] = useState(printer?.camera_url || "");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -191,6 +200,7 @@ function PrinterModal({
       moonraker_url: url,
       nozzle_size: parseFloat(nozzle),
       extruder_type: extruderType,
+      filament_tracking_mode: filamentTrackingMode,
       fluidd_url: fluiddUrl || null,
       camera_url: cameraUrl || null,
     };
@@ -282,6 +292,37 @@ function PrinterModal({
                 ✓ Se agregarán tareas de mantenimiento del tubo PTFE
               </p>
             )}
+          </div>
+
+          {/* Filament tracking mode selector */}
+          <div>
+            <label className="block text-sm font-medium mb-1.5">Gestión de descuento de filamento</label>
+            <div className="grid grid-cols-1 gap-2">
+              <button
+                type="button"
+                onClick={() => setFilamentTrackingMode("manager")}
+                className={`py-3 px-4 rounded-lg border text-sm font-medium transition-all text-left ${
+                  filamentTrackingMode === "manager"
+                    ? "bg-primary/20 border-primary text-primary"
+                    : "bg-secondary border-border text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <div className="font-semibold">PrintFarm Manager</div>
+                <div className="text-xs mt-0.5 opacity-80">Recomendado para Sonic Pad y equipos sin integración nativa</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilamentTrackingMode("moonraker")}
+                className={`py-3 px-4 rounded-lg border text-sm font-medium transition-all text-left ${
+                  filamentTrackingMode === "moonraker"
+                    ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400"
+                    : "bg-secondary border-border text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <div className="font-semibold">Nativa en Moonraker</div>
+                <div className="text-xs mt-0.5 opacity-80">Requiere Spoolman instalado en la impresora — evita doble descuento</div>
+              </button>
+            </div>
           </div>
 
           <div>
