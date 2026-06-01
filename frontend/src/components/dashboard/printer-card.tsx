@@ -20,7 +20,7 @@ export const PrinterCard = React.memo(function PrinterCard({ printer, onUpdate }
 
   useEffect(() => {
     if (printer.current_spool_id && (!spoolInfo || spoolInfo.id !== printer.current_spool_id)) {
-      api.getSpool(printer.current_spool_id)
+      api.getSpoolCached(printer.current_spool_id)
         .then(setSpoolInfo)
         .catch(console.error);
     } else if (!printer.current_spool_id) {

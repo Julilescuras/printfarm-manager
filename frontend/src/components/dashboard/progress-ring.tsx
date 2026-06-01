@@ -31,12 +31,12 @@ export function ProgressRing({
   return (
     <div className={`relative inline-flex items-center justify-center ${className}`}>
       <svg width={size} height={size} className="-rotate-90">
-        {/* Background circle */}
+        {/* Background circle — theme-aware track */}
         <circle
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke="hsl(222, 20%, 18%)"
+          stroke="hsl(var(--secondary))"
           strokeWidth={strokeWidth}
           fill="none"
         />
