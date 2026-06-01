@@ -51,7 +51,7 @@ export default function PrintersPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gradient">Gestión de Impresoras</h1>
           <p className="text-sm text-muted-foreground mt-1">
@@ -60,7 +60,7 @@ export default function PrintersPage() {
         </div>
         <button
           onClick={handleAdd}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors"
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors self-start sm:self-auto shrink-0"
         >
           <Plus className="w-4 h-4" />
           Nueva Impresora

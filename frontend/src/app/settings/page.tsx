@@ -2,8 +2,6 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import {
-  Sun,
-  Moon,
   Send,
   Check,
   AlertCircle,
@@ -17,10 +15,9 @@ import {
   GitCommit,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import { useTheme } from "@/providers/theme-provider";
+import { AppearancePanel } from "@/components/settings/appearance-panel";
 
 export default function SettingsPage() {
-  const { theme, toggleTheme } = useTheme();
   const [botToken, setBotToken] = useState("");
   const [chatId, setChatId] = useState("");
   const [telegramEnabled, setTelegramEnabled] = useState(false);
@@ -168,40 +165,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Appearance Section */}
-      <div className="glass-card p-6 space-y-4">
-        <h2 className="text-lg font-semibold flex items-center gap-2">
-          {theme === "dark" ? <Moon className="w-5 h-5 text-primary" /> : <Sun className="w-5 h-5 text-amber-400" />}
-          Apariencia
-        </h2>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="font-medium">Modo {theme === "dark" ? "Oscuro" : "Claro"}</p>
-            <p className="text-sm text-muted-foreground">
-              Cambiá entre el tema oscuro y claro
-            </p>
-          </div>
-          <button
-            onClick={toggleTheme}
-            className="relative w-14 min-w-[3.5rem] h-7 rounded-full transition-colors duration-300 focus:outline-none shrink-0"
-            style={{
-              backgroundColor: theme === "dark" ? "hsl(var(--primary))" : "hsl(var(--muted))",
-            }}
-          >
-            <span
-              className="absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-md transition-transform duration-300 flex items-center justify-center"
-              style={{
-                transform: theme === "dark" ? "translateX(28px)" : "translateX(0px)",
-              }}
-            >
-              {theme === "dark" ? (
-                <Moon className="w-3.5 h-3.5 text-primary" />
-              ) : (
-                <Sun className="w-3.5 h-3.5 text-amber-500" />
-              )}
-            </span>
-          </button>
-        </div>
-      </div>
+      <AppearancePanel />
 
       {/* System Update Section */}
       <div className="glass-card p-6 space-y-4">
