@@ -38,6 +38,22 @@ else
     echo -e "  ${YELLOW}  Puede que necesites cerrar sesión y volver a entrar.${NC}"
 fi
 
+# Habilitar Docker para que arranque automáticamente al bootear
+if [ -d /run/systemd/system ]; then
+    sudo systemctl enable docker 2>/dev/null && \
+        echo -e "  ${GREEN}✓${NC} Docker habilitado en boot (systemd)" || true
+elif command -v update-rc.d &> /dev/null; then
+    sudo update-rc.d docker defaults 2>/dev/null && \
+        echo -e "  ${GREEN}✓${NC} Docker habilitado en boot (sysvinit)" || true
+fi
+
+# Asegurarse de que el daemon esté corriendo ahora
+if ! docker info &> /dev/null; then
+    echo -e "  ${YELLOW}⚠${NC} Daemon de Docker no está corriendo. Iniciando..."
+    sudo service docker start
+    echo -e "  ${GREEN}✓${NC} Docker iniciado"
+fi
+
 # ─── Step 2: Check/Install Docker Compose ────────────
 echo -e "\n${CYAN}[2/6]${NC} Verificando Docker Compose..."
 
