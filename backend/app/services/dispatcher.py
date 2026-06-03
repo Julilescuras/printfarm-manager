@@ -415,6 +415,14 @@ class Dispatcher:
                 if printer.status == "offline":
                     continue
 
+                # Only act on a FRESH reading. If the Moonraker client isn't
+                # connected yet (e.g. right after a backend restart), its DB
+                # status may be stale/transient — skip to avoid closing a job
+                # whose printer is actually still printing.
+                client = moonraker_manager.get_client(printer.id)
+                if not client or not client.is_connected:
+                    continue
+
                 job_file = os.path.basename(job.gcode_filename or "")
                 printer_file = os.path.basename(printer.current_filename or "")
                 is_live = (

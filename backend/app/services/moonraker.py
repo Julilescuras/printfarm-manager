@@ -445,7 +445,11 @@ class MoonrakerClient:
         start the next queued job ON TOP of the finished print still on the bed.
         """
         current_status = await self._get_current_db_status()
-        if current_status in ("paused", "available", "requires_clearance"):
+        # 'printing' is preserved too: a printer that was printing and merely
+        # reconnected is still printing. Downgrading it to standby (even for the
+        # ~1s until the subscribe response arrives) could let the reconciler
+        # wrongly close a live job.
+        if current_status in ("paused", "available", "requires_clearance", "printing"):
             logger.info(f"[Printer {self.printer_id}] Connected but keeping protected status: {current_status}")
             return
         await self._update_printer_db(status="standby")
