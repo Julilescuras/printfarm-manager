@@ -84,6 +84,19 @@ export default function PrinterDetailsPage() {
     }
   };
 
+  const handleCancelPrint = async () => {
+    if (!window.confirm("¿Seguro que querés cancelar la impresión en curso? Se frenará la impresora y quedará la cama por vaciar.")) return;
+    setIsSettingStatus(true);
+    try {
+      await api.cancelPrint(printer.id);
+      await refreshState();
+    } catch (error: any) {
+      alert(`Error al cancelar la impresión: ${error.message || error}`);
+    } finally {
+      setIsSettingStatus(false);
+    }
+  };
+
   const statusColors: Record<string, string> = {
     printing: "text-blue-400 bg-blue-500/20 border-blue-500/30",
     available: "text-green-400 bg-green-500/20 border-green-500/30",
@@ -179,8 +192,17 @@ export default function PrinterDetailsPage() {
           <div className="glass-card p-6">
             <h2 className="text-lg font-bold mb-4">Acciones</h2>
             {printer.status === "printing" ? (
-              <div className="text-center p-4 bg-secondary/50 rounded-lg text-sm text-muted-foreground">
-                No se puede cambiar el estado mientras imprime
+              <div className="space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  No se puede cambiar el estado manualmente mientras imprime.
+                </p>
+                <button
+                  onClick={handleCancelPrint}
+                  disabled={isSettingStatus}
+                  className="w-full py-2 px-3 rounded-lg text-sm font-semibold bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 transition-colors disabled:opacity-50"
+                >
+                  {isSettingStatus ? "Cancelando..." : "Cancelar impresión"}
+                </button>
               </div>
             ) : (
               <div className="space-y-3">

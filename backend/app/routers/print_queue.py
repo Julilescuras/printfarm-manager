@@ -79,7 +79,7 @@ async def get_history(
     return result.scalars().all()
 
 
-@router.post("", response_model=PrintJobResponse, status_code=201)
+@router.post("", response_model=List[PrintJobResponse], status_code=201)
 async def add_job(
     name: str = Form(...),
     compatible_models: str = Form(...),  # JSON string: '["Ender 3 V2 Neo"]'
@@ -118,23 +118,32 @@ async def add_job(
     # Parse G-code for estimates (in a separate thread to prevent blocking)
     parsed = await asyncio.to_thread(parse_gcode, gcode_path, required_material)
 
-    # Create the job record
-    job = PrintJob(
-        name=name,
-        gcode_filename=gcode_path,
-        gcode_original_name=gcode.filename,
-        compatible_models=compatible_models,
-        required_nozzle=required_nozzle,
-        required_material=required_material,
-        required_color=required_color,
-        copies=copies,
-        priority=priority,
-        estimated_time_secs=parsed.get("estimated_time_secs"),
-        estimated_weight_g=parsed.get("estimated_weight_g"),
-    )
-    db.add(job)
+    # "Copies" creates N independent jobs (each copies=1) pointing to the SAME
+    # G-code file on disk. This way every copy is its own queue item that can be
+    # reordered, cancelled or duplicated on its own — and we never duplicate the
+    # uploaded file.
+    n = max(1, copies)
+    created_jobs: List[PrintJob] = []
+    for i in range(n):
+        job = PrintJob(
+            name=name if n == 1 else f"{name} ({i + 1}/{n})",
+            gcode_filename=gcode_path,
+            gcode_original_name=gcode.filename,
+            compatible_models=compatible_models,
+            required_nozzle=required_nozzle,
+            required_material=required_material,
+            required_color=required_color,
+            copies=1,
+            priority=priority,
+            estimated_time_secs=parsed.get("estimated_time_secs"),
+            estimated_weight_g=parsed.get("estimated_weight_g"),
+        )
+        db.add(job)
+        created_jobs.append(job)
+
     await db.commit()
-    await db.refresh(job)
+    for job in created_jobs:
+        await db.refresh(job)
 
     # Notify frontends
     await ws_hub.broadcast_queue_update()
@@ -142,7 +151,7 @@ async def add_job(
     # Try to dispatch to any idle printer
     await dispatcher.try_dispatch_all()
 
-    return job
+    return created_jobs
 
 
 @router.put("/reorder")
@@ -201,18 +210,65 @@ async def update_job(
 
 @router.delete("/{job_id}", status_code=204)
 async def cancel_job(job_id: int, db: AsyncSession = Depends(get_db)):
-    """Cancel a pending job."""
+    """Cancel a pending job. Cancelling a print that is already running is done
+    from the printer detail screen (POST /api/printers/{id}/cancel-print)."""
     result = await db.execute(select(PrintJob).where(PrintJob.id == job_id))
     job = result.scalar_one_or_none()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
     if job.status == "printing":
-        raise HTTPException(status_code=400, detail="Cannot cancel a job that is currently printing")
+        raise HTTPException(
+            status_code=400,
+            detail="Para cancelar una impresión en curso, usá la pantalla de la impresora.",
+        )
 
     job.status = "cancelled"
     await db.commit()
     await ws_hub.broadcast_queue_update()
+
+
+@router.post("/{job_id}/clone", response_model=List[PrintJobResponse], status_code=201)
+async def clone_job(job_id: int, copies: int = 1, db: AsyncSession = Depends(get_db)):
+    """Duplicate any job (in any state) back into the queue as new pending jobs.
+    Re-uses the existing G-code file — does not re-upload."""
+    result = await db.execute(select(PrintJob).where(PrintJob.id == job_id))
+    src = result.scalar_one_or_none()
+    if not src:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if not os.path.exists(src.gcode_filename):
+        raise HTTPException(
+            status_code=404,
+            detail=f"El G-code ya no existe en disco: {src.gcode_original_name}",
+        )
+
+    n = max(1, copies)
+    created: List[PrintJob] = []
+    for _ in range(n):
+        new_job = PrintJob(
+            name=src.name,
+            gcode_filename=src.gcode_filename,
+            gcode_original_name=src.gcode_original_name,
+            compatible_models=src.compatible_models,
+            required_nozzle=src.required_nozzle,
+            required_material=src.required_material,
+            required_color=src.required_color,
+            copies=1,
+            priority=src.priority,
+            estimated_time_secs=src.estimated_time_secs,
+            estimated_weight_g=src.estimated_weight_g,
+        )
+        db.add(new_job)
+        created.append(new_job)
+
+    await db.commit()
+    for job in created:
+        await db.refresh(job)
+
+    await ws_hub.broadcast_queue_update()
+    await dispatcher.try_dispatch_all()
+    return created
 
 
 @router.post("/{job_id}/requeue", response_model=PrintJobResponse)

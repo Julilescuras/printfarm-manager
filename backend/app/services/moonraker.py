@@ -267,24 +267,35 @@ class MoonrakerClient:
                         logger.info(
                             f"[Printer {self.printer_id}] Print COMPLETE -> requires_clearance"
                         )
-                        # Accumulate maintenance hours using latest DB total_print_time_secs
-                        from app.services.monitor import monitor
-                        from app.database import async_session
-                        from sqlalchemy import select
-                        from app.models.printer import Printer
-                        
-                        async def update_maint_hours():
-                            async with async_session() as session:
-                                result = await session.execute(select(Printer).where(Printer.id == self.printer_id))
-                                printer = result.scalar_one_or_none()
-                                if printer and printer.total_print_time_secs > 0:
-                                    await monitor.update_print_hours(self.printer_id, float(printer.total_print_time_secs))
-                        
-                        asyncio.create_task(update_maint_hours())
-                        
+                        # NOTE: maintenance/lifetime hours are credited live by the
+                        # monitor loop (incrementally, from total_print_time_secs).
+                        # We deliberately do NOT add a lump sum here — that caused
+                        # the counters to only move once at the end of a print and
+                        # risked double-counting.
+
                         # Send Telegram notification
                         asyncio.create_task(
                             self._notify_print_complete()
+                        )
+                elif new_state == "cancelled":
+                    # Print aborted from Klipper/Fluidd (or via our own cancel).
+                    # Flush any remaining filament, then move the printer to
+                    # requires_clearance (there's a half-finished piece on the bed)
+                    # and close out the job in the queue + history.
+                    if self._filament_used_accumulated > 0:
+                        asyncio.create_task(self._sync_filament_to_spoolman())
+
+                    # Don't override a manual state the user may have set
+                    current_db_status = await self._get_current_db_status()
+                    if current_db_status not in ("paused", "available"):
+                        updates["status"] = "requires_clearance"
+                    if old_state not in ("cancelled", "standby"):
+                        logger.info(
+                            f"[Printer {self.printer_id}] Print CANCELLED -> requires_clearance"
+                        )
+                        from app.services.dispatcher import dispatcher
+                        asyncio.create_task(
+                            dispatcher.on_print_aborted(self.printer_id, "cancelled")
                         )
                 elif new_state == "standby":
                     # Only set standby if we weren't in a manual/clearance state
@@ -297,11 +308,16 @@ class MoonrakerClient:
                     # Flush any remaining filament
                     if self._filament_used_accumulated > 0:
                         asyncio.create_task(self._sync_filament_to_spoolman())
-                        
+
                     updates["status"] = "error"
                     if old_state != "error":
                         asyncio.create_task(
                             self._notify_printer_error()
+                        )
+                        # Close out the in-flight job as failed in queue + history
+                        from app.services.dispatcher import dispatcher
+                        asyncio.create_task(
+                            dispatcher.on_print_aborted(self.printer_id, "failed")
                         )
 
                 self._last_state = new_state
@@ -412,10 +428,16 @@ class MoonrakerClient:
             return printer.status if printer else "offline"
 
     async def _set_online_status(self):
-        """Set the printer online, but respect manual states like 'paused' and 'available'."""
+        """Set the printer online, but respect states that must survive reconnects.
+
+        CRITICAL: 'requires_clearance' MUST be preserved here. Otherwise a brief
+        WebSocket reconnect (Klipper restart, network blip, ping timeout) would
+        silently downgrade the printer to 'standby', and the dispatcher would
+        start the next queued job ON TOP of the finished print still on the bed.
+        """
         current_status = await self._get_current_db_status()
-        if current_status in ("paused", "available"):
-            logger.info(f"[Printer {self.printer_id}] Connected but keeping manual status: {current_status}")
+        if current_status in ("paused", "available", "requires_clearance"):
+            logger.info(f"[Printer {self.printer_id}] Connected but keeping protected status: {current_status}")
             return
         await self._update_printer_db(status="standby")
 
@@ -495,6 +517,22 @@ class MoonrakerClient:
                     return False
         except Exception as e:
             logger.error(f"[Printer {self.printer_id}] Start print error: {e}")
+            return False
+
+    async def cancel_print(self) -> bool:
+        """Cancel the currently running print on the printer via Moonraker."""
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(f"{self.base_url}/printer/print/cancel")
+                if response.status_code == 200:
+                    logger.info(f"[Printer {self.printer_id}] Print cancelled")
+                    return True
+                logger.error(
+                    f"[Printer {self.printer_id}] Cancel failed: {response.status_code} {response.text}"
+                )
+                return False
+        except Exception as e:
+            logger.error(f"[Printer {self.printer_id}] Cancel print error: {e}")
             return False
 
     async def get_thumbnail_url(self, filename: str) -> Optional[str]:
