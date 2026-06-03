@@ -53,11 +53,16 @@ class Monitor:
             await asyncio.sleep(settings.monitor_poll_interval)
 
     async def _check_maintenance_alerts(self):
-        """Check all maintenance records against their thresholds.
+        """Credit live print hours and check maintenance thresholds.
 
-        This loop is the single source of truth for alert transitions: it
-        detects when accumulated hours cross the threshold, fires the Telegram
-        notification once, and pushes a maintenance update to the frontend.
+        This loop is the single source of truth for BOTH:
+          1. Crediting accumulated print time (incrementally, every poll) to each
+             maintenance record AND to the printer's lifetime counter, so the
+             numbers move in real time during a print instead of jumping only
+             when it finishes.
+          2. Alert transitions: detecting when accumulated hours cross the
+             threshold, firing the Telegram notification exactly once, and
+             pushing a maintenance update to the frontend.
         """
         any_change = False
         async with async_session() as session:
@@ -76,6 +81,25 @@ class Monitor:
                     )
                 )
                 records = result.scalars().all()
+
+                # ── Live print-hour crediting ──────────────────────────────
+                # total_print_time_secs is Klipper's total_duration: it grows
+                # during a print and resets to ~0 when a new print starts. We
+                # credit only the *new* seconds since the last poll (the delta),
+                # using maint_credited_secs as the high-water mark.
+                current = printer.total_print_time_secs or 0
+                credited = printer.maint_credited_secs or 0
+                if current < credited:
+                    # Klipper counter reset → a new print began. Rebase.
+                    credited = 0
+                delta_secs = current - credited
+                if delta_secs > 0:
+                    delta_hours = delta_secs / 3600.0
+                    for record in records:
+                        record.accumulated_hours += delta_hours
+                    printer.lifetime_print_seconds = (printer.lifetime_print_seconds or 0) + delta_secs
+                    printer.maint_credited_secs = current
+                    any_change = True
 
                 for record in records:
                     # The accumulated_hours delta is tracked from the last reset
@@ -110,36 +134,12 @@ class Monitor:
             if any_change:
                 await session.commit()
 
-        # Notify connected frontends outside the DB session
+        # Notify connected frontends outside the DB session.
+        # any_change covers both live hour crediting and alert transitions, so
+        # the maintenance UI updates in real time during prints.
         if any_change:
             from app.ws.hub import ws_hub
             await ws_hub.broadcast_maintenance_update()
-
-    async def update_print_hours(self, printer_id: int, print_duration_secs: float):
-        """
-        Update accumulated maintenance hours when a print completes.
-        Called by the dispatcher/moonraker when a print finishes.
-        """
-        hours = print_duration_secs / 3600.0
-
-        async with async_session() as session:
-            result = await session.execute(
-                select(MaintenanceRecord).where(
-                    MaintenanceRecord.printer_id == printer_id
-                )
-            )
-            records = result.scalars().all()
-
-            for record in records:
-                record.accumulated_hours += hours
-                # NOTE: we intentionally do NOT flip is_alert_active here.
-                # The monitor loop owns alert transitions so it can fire the
-                # Telegram notification exactly once when the threshold is crossed.
-
-            await session.commit()
-            logger.info(
-                f"Updated maintenance hours for printer {printer_id}: +{hours:.2f}h"
-            )
 
 
 # Singleton

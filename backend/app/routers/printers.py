@@ -160,6 +160,44 @@ async def clear_bed(printer_id: int, db: AsyncSession = Depends(get_db)):
     }
 
 
+@router.post("/{printer_id}/cancel-print")
+async def cancel_print(printer_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    🛑 Cancelar la impresión en curso de una impresora.
+    Frena el print en Klipper, registra el historial como 'cancelled',
+    libera el trabajo y deja la impresora en 'requires_clearance'.
+    """
+    result = await db.execute(select(Printer).where(Printer.id == printer_id))
+    printer = result.scalar_one_or_none()
+    if not printer:
+        raise HTTPException(status_code=404, detail="Printer not found")
+
+    if printer.status != "printing":
+        raise HTTPException(
+            status_code=400,
+            detail=f"La impresora no está imprimiendo (estado: {printer.status})",
+        )
+
+    # Stop the print on the machine
+    client = moonraker_manager.get_client(printer_id)
+    if client and client.is_connected:
+        await client.cancel_print()
+
+    # Close out the job + write a 'cancelled' history entry
+    await dispatcher.on_print_aborted(printer_id, "cancelled")
+
+    # Move the printer to requires_clearance (there's a half print on the bed)
+    printer.status = "requires_clearance"
+    printer.current_job_progress = 0.0
+    await db.commit()
+    await db.refresh(printer)
+
+    await ws_hub.broadcast_printer_update(printer.to_dict())
+    await ws_hub.broadcast_queue_update()
+
+    return {"status": "ok", "message": "Impresión cancelada"}
+
+
 @router.post("/{printer_id}/dispatch")
 async def trigger_dispatch(printer_id: int, db: AsyncSession = Depends(get_db)):
     """

@@ -48,6 +48,9 @@ class Printer(Base):
     camera_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     total_print_time_secs: Mapped[int] = mapped_column(Integer, default=0)
     lifetime_print_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    # High-water mark of total_print_time_secs already credited to lifetime /
+    # maintenance counters. Used by the monitor loop to credit only new seconds.
+    maint_credited_secs: Mapped[int] = mapped_column(Integer, default=0)
     eta_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Timestamps

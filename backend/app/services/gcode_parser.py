@@ -128,7 +128,16 @@ def parse_gcode(file_path: str, material: str = "PLA") -> dict:
             # --- FILAMENT EXTRACTION ---
 
             # Cura: ;Filament used: 1.23456m
-            if "FILAMENT USED" in line_upper and "MM" not in line_upper and estimated_weight is None:
+            # NOTE: exclude '[G]' here — otherwise PrusaSlicer's
+            # '; total filament used [g] = 45.6' line would match this branch,
+            # its metre-regex would fail, and the if/elif chain would skip the
+            # grams branch below, leaving estimated_weight = None.
+            if (
+                "FILAMENT USED" in line_upper
+                and "MM" not in line_upper
+                and "[G]" not in line_upper
+                and estimated_weight is None
+            ):
                 match = re.search(r':\s*([\d.]+)\s*m', line, re.IGNORECASE)
                 if match:
                     length_m = float(match.group(1))

@@ -6,10 +6,11 @@ Sistema centralizado de gestión para granja de impresión 3D con integración M
 
 - **Dashboard en tiempo real** — Estado de todas las impresoras vía WebSocket con temperaturas, progreso y estimaciones
 - **Cola de impresión inteligente** — Despacho automático basado en compatibilidad de modelo, boquilla, material, color y verificación de filamento disponible
+- **Copias y duplicados** — Al crear un trabajo con N copias se generan N tareas independientes apuntando al mismo G-code (sin duplicar el archivo); además podés duplicar cualquier tarea en cualquier estado
 - **Parseo automático de G-code** — Al subir un archivo, se extraen automáticamente el tiempo estimado y el peso de filamento desde los comentarios del slicer (Cura, PrusaSlicer, OrcaSlicer, Simplify3D)
 - **Drag & drop** — Reordená las prioridades de la cola arrastrando los trabajos
-- **Lógica de "Cama Ocupada"** — Control de flujo con botón de vaciado
-- **Inventario de filamento** — Integración con Spoolman, verificación automática de stock antes de imprimir
+- **Lógica de "Cama Ocupada"** — Control de flujo con botón de vaciado; la impresión en curso se cancela desde la pantalla de cada impresora
+- **Inventario de filamento** — Integración con Spoolman con descuento configurable por impresora: gestionado por el Manager (ideal para Sonic Pad/equipos sin integración nativa) o nativo de Moonraker. Verificación automática de stock antes de imprimir
 - **Historial de impresiones** — Registro completo con impresora, duración, material y resultado
 - **Alertas de mantenimiento** — Contadores configurables por tipo de mantenimiento con reset y notificaciones
 - **Notificaciones por Telegram** — Alertas automáticas de: impresión completada, cama para vaciar, errores y mantenimiento. Configuración desde la web
@@ -107,11 +108,17 @@ docker compose up -d --build
 | PUT | `/api/printers/{id}` | Editar impresora |
 | DELETE | `/api/printers/{id}` | Eliminar impresora |
 | POST | `/api/printers/{id}/clear-bed` | Vaciar cama |
+| POST | `/api/printers/{id}/cancel-print` | Cancelar la impresión en curso |
+| POST | `/api/printers/{id}/dispatch` | Forzar despacho del próximo trabajo |
+| PUT | `/api/printers/{id}/status` | Cambiar estado manual (available/paused/requires_clearance) |
+| PUT | `/api/printers/{id}/spool` | Asignar/desasignar spool de Spoolman |
 | GET | `/api/queue` | Cola de impresión |
-| POST | `/api/queue` | Agregar trabajo (multipart con G-code) |
+| POST | `/api/queue` | Agregar trabajo (multipart con G-code) — crea N tareas según copias |
 | PUT | `/api/queue/reorder` | Reordenar prioridades |
 | GET | `/api/queue/history` | Historial de impresiones |
-| DELETE | `/api/queue/{id}` | Cancelar trabajo |
+| DELETE | `/api/queue/{id}` | Cancelar trabajo pendiente |
+| POST | `/api/queue/{id}/clone` | Duplicar un trabajo a la cola |
+| POST | `/api/queue/{id}/requeue` | Re-encolar un trabajo completado/cancelado |
 | GET | `/api/maintenance` | Registros de mantenimiento |
 | POST | `/api/maintenance/{id}/reset` | Reset de contador |
 | GET | `/api/settings` | Configuración del sistema |

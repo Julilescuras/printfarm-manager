@@ -64,8 +64,19 @@ async def init_db():
             ("print_jobs", "started_at", "DATETIME"),
             ("printers", "camera_url", "VARCHAR(255)"),
             ("printers", "lifetime_print_seconds", "INTEGER NOT NULL DEFAULT 0"),
+            ("printers", "maint_credited_secs", "INTEGER NOT NULL DEFAULT 0"),
             ("printers", "filament_tracking_mode", "VARCHAR(20) NOT NULL DEFAULT 'manager'"),
         ]
+        # Optional SQL to run ONCE, only when a column is freshly added
+        # (i.e. the ALTER TABLE succeeded). Used to backfill sensible values.
+        post_migration_backfill = {
+            # Initialize the maintenance high-water mark to the printer's current
+            # total print time, so existing printers don't get their whole last
+            # print credited again the first time the monitor loop runs.
+            ("printers", "maint_credited_secs"):
+                "UPDATE printers SET maint_credited_secs = total_print_time_secs",
+        }
+
         for table, column, col_type in migrations:
             try:
                 await conn.execute(
@@ -73,4 +84,12 @@ async def init_db():
                 )
             except Exception:
                 # Column already exists — skip silently
-                pass
+                continue
+
+            # ALTER succeeded → column is new → run any backfill exactly once
+            backfill_sql = post_migration_backfill.get((table, column))
+            if backfill_sql:
+                try:
+                    await conn.execute(text(backfill_sql))
+                except Exception:
+                    pass

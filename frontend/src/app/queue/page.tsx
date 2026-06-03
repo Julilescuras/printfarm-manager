@@ -140,6 +140,21 @@ export default function QueuePage() {
     }
   };
 
+  const handleClone = async (id: number) => {
+    try {
+      await api.cloneJob(id, 1);
+      // Jump to the pending tab so the new copy is visible
+      if (activeTab === "pending") {
+        fetchJobs();
+      } else {
+        setActiveTab("pending");
+      }
+    } catch (error: any) {
+      alert(`Error al duplicar: ${error.message || error}`);
+      console.error("Error cloning job:", error);
+    }
+  };
+
   const handleCloneFromHistory = async (historyId: number, copies: number) => {
     try {
       await api.cloneFromHistory(historyId, copies);
@@ -211,6 +226,7 @@ export default function QueuePage() {
               onCancel={handleCancel}
               onRequeue={handleRequeue}
               onReorder={handleReorder}
+              onClone={handleClone}
             />
           ) : (
             jobs.map((job) => (
@@ -221,6 +237,7 @@ export default function QueuePage() {
                 onEdit={() => setEditingJob(job)}
                 onCancel={handleCancel}
                 onRequeue={handleRequeue}
+                onClone={handleClone}
               />
             ))
           )}
@@ -401,6 +418,7 @@ function DragDropJobList({
   onCancel,
   onRequeue,
   onReorder,
+  onClone,
 }: {
   jobs: PrintJob[];
   filaments: any[];
@@ -408,6 +426,7 @@ function DragDropJobList({
   onCancel: (id: number) => void;
   onRequeue: (id: number) => void;
   onReorder: (jobs: PrintJob[]) => void;
+  onClone: (id: number) => void;
 }) {
   const [localJobs, setLocalJobs] = useState(jobs);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -474,6 +493,7 @@ function DragDropJobList({
             onEdit={() => onEdit(job)}
             onCancel={onCancel}
             onRequeue={onRequeue}
+            onClone={onClone}
             showGrip
           />
         </div>
@@ -490,6 +510,7 @@ function JobCard({
   onEdit,
   onCancel,
   onRequeue,
+  onClone,
   showGrip = false,
 }: {
   job: PrintJob;
@@ -497,6 +518,7 @@ function JobCard({
   onEdit: () => void;
   onCancel: (id: number) => void;
   onRequeue: (id: number) => void;
+  onClone: (id: number) => void;
   showGrip?: boolean;
 }) {
   let models: string[] = [];
@@ -557,9 +579,11 @@ function JobCard({
               {filamentName || job.required_color}
             </span>
           )}
-          <span>
-            📄 {job.copies_completed}/{job.copies} copias
-          </span>
+          {job.copies > 1 && (
+            <span>
+              📄 {job.copies_completed}/{job.copies} copias
+            </span>
+          )}
           {models.length > 0 && (
             <span className="flex items-center gap-1">
               <Printer className="w-3 h-3" />
@@ -586,22 +610,30 @@ function JobCard({
       {/* Actions */}
       <div className="flex gap-2 shrink-0">
         {job.status === "pending" && (
-          <>
-            <button
-              onClick={onEdit}
-              className="p-2 rounded-lg hover:bg-primary/20 text-muted-foreground hover:text-primary transition-colors"
-              title="Editar"
-            >
-              <Pencil className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => onCancel(job.id)}
-              className="p-2 rounded-lg hover:bg-red-500/20 text-muted-foreground hover:text-red-400 transition-colors"
-              title="Cancelar"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          </>
+          <button
+            onClick={onEdit}
+            className="p-2 rounded-lg hover:bg-primary/20 text-muted-foreground hover:text-primary transition-colors"
+            title="Editar"
+          >
+            <Pencil className="w-4 h-4" />
+          </button>
+        )}
+        {/* Duplicar — disponible en todos los estados */}
+        <button
+          onClick={() => onClone(job.id)}
+          className="p-2 rounded-lg hover:bg-primary/20 text-muted-foreground hover:text-primary transition-colors"
+          title="Duplicar tarea"
+        >
+          <Copy className="w-4 h-4" />
+        </button>
+        {job.status === "pending" && (
+          <button
+            onClick={() => onCancel(job.id)}
+            className="p-2 rounded-lg hover:bg-red-500/20 text-muted-foreground hover:text-red-400 transition-colors"
+            title="Cancelar"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
         )}
         {(job.status === "completed" || job.status === "cancelled") && (
           <button
@@ -915,7 +947,6 @@ function EditJobModal({
   const [nozzle, setNozzle] = useState(job.required_nozzle);
   const [material, setMaterial] = useState(job.required_material);
   const [color, setColor] = useState(job.required_color || "");
-  const [copies, setCopies] = useState(job.copies);
   const [priority, setPriority] = useState(job.priority);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -939,7 +970,6 @@ function EditJobModal({
         required_nozzle: nozzle,
         required_material: material,
         required_color: color || null,
-        copies,
         priority,
       });
       onUpdated();
@@ -1033,8 +1063,8 @@ function EditJobModal({
             </div>
           </div>
 
-          {/* Color + Copies + Priority */}
-          <div className="grid grid-cols-3 gap-3">
+          {/* Color + Priority */}
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium mb-1.5">Color (Spoolman)</label>
               <div className="relative">
@@ -1054,22 +1084,11 @@ function EditJobModal({
                     </option>
                   ))}
                 </select>
-                <div 
+                <div
                   className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border border-white/20 pointer-events-none"
                   style={{ backgroundColor: color || 'transparent' }}
                 />
               </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1.5">Copias</label>
-              <input
-                type="number"
-                min={1}
-                max={100}
-                value={copies}
-                onChange={(e) => setCopies(parseInt(e.target.value) || 1)}
-                className="w-full px-3 py-2 rounded-lg bg-secondary border border-border focus:border-primary outline-none text-sm"
-              />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1.5">Prioridad</label>
