@@ -319,6 +319,11 @@ class Dispatcher:
                     )
                 await session.commit()
 
+                # Refresh the queue UI (this runs both when the print finishes
+                # and when the bed is cleared; the second call is a harmless no-op)
+                from app.ws.hub import ws_hub
+                await ws_hub.broadcast_queue_update()
+
     async def on_print_aborted(self, printer_id: int, result: str = "cancelled"):
         """
         Called when a print is cancelled or fails. Marks the active job as

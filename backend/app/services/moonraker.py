@@ -273,6 +273,15 @@ class MoonrakerClient:
                         # the counters to only move once at the end of a print and
                         # risked double-counting.
 
+                        # Close out the job NOW (mark completed + write history)
+                        # so a finished print leaves the "En Impresión" tab even
+                        # before the bed is cleared. Idempotent: clearing the bed
+                        # later calls this again and it becomes a no-op.
+                        from app.services.dispatcher import dispatcher
+                        asyncio.create_task(
+                            dispatcher.on_print_complete(self.printer_id)
+                        )
+
                         # Send Telegram notification
                         asyncio.create_task(
                             self._notify_print_complete()
