@@ -109,6 +109,8 @@ export const api = {
     }),
   triggerDispatch: (printerId: number) =>
     apiFetch<any>(`/api/printers/${printerId}/dispatch`, { method: "POST" }),
+  cancelPrint: (printerId: number) =>
+    apiFetch<any>(`/api/printers/${printerId}/cancel-print`, { method: "POST" }),
   setStatus: (printerId: number, status: string) =>
     apiFetch<any>(`/api/printers/${printerId}/status`, {
       method: "PUT",
@@ -144,6 +146,10 @@ export const api = {
     }),
   cloneFromHistory: (historyId: number, copies: number = 1) =>
     apiFetch<any>(`/api/queue/history/${historyId}/clone?copies=${copies}`, {
+      method: "POST",
+    }),
+  cloneJob: (id: number, copies: number = 1) =>
+    apiFetch<any>(`/api/queue/${id}/clone?copies=${copies}`, {
       method: "POST",
     }),
 

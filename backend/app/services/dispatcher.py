@@ -303,9 +303,9 @@ class Dispatcher:
                 )
                 session.add(history)
 
-                # Accumulate lifetime print hours on the printer
-                if printer and history.duration_secs:
-                    printer.lifetime_print_seconds = (printer.lifetime_print_seconds or 0) + history.duration_secs
+                # NOTE: lifetime/maintenance hours are credited live by the
+                # monitor loop from total_print_time_secs. We must NOT add them
+                # here too, or the print would be counted twice.
 
                 if job.copies_completed >= job.copies:
                     job.status = "completed"
@@ -318,6 +318,57 @@ class Dispatcher:
                         f"Job '{job.name}' completed copy {job.copies_completed}/{job.copies}"
                     )
                 await session.commit()
+
+    async def on_print_aborted(self, printer_id: int, result: str = "cancelled"):
+        """
+        Called when a print is cancelled or fails. Marks the active job as
+        cancelled, writes a history entry (result='cancelled'|'failed'), and
+        frees the job so it leaves the 'En Impresión' tab.
+
+        Idempotent: if no 'printing' job is found (e.g. the queue endpoint
+        already closed it), this is a no-op.
+        """
+        async with async_session() as session:
+            result_q = await session.execute(
+                select(PrintJob).where(
+                    and_(
+                        PrintJob.assigned_printer_id == printer_id,
+                        PrintJob.status == "printing",
+                    )
+                )
+            )
+            job = result_q.scalar_one_or_none()
+            if not job:
+                return
+
+            result_q = await session.execute(
+                select(Printer).where(Printer.id == printer_id)
+            )
+            printer = result_q.scalar_one_or_none()
+
+            history = PrintHistory(
+                print_job_id=job.id,
+                printer_id=printer_id,
+                printer_name=printer.name if printer else "",
+                job_name=job.name,
+                gcode_filename=job.gcode_original_name,
+                material=job.required_material,
+                estimated_weight_g=job.estimated_weight_g,
+                started_at=job.started_at,
+                completed_at=datetime.now(timezone.utc),
+                duration_secs=printer.total_print_time_secs if printer else None,
+                result=result,
+            )
+            session.add(history)
+
+            job.status = "cancelled"
+            job.assigned_printer_id = None
+            await session.commit()
+            logger.info(f"Job '{job.name}' marked {result} on printer {printer_id}")
+
+        # Notify frontends the queue changed
+        from app.ws.hub import ws_hub
+        await ws_hub.broadcast_queue_update()
 
     async def try_dispatch_all(self):
         """Try to dispatch jobs to ALL available/standby printers.
