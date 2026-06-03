@@ -65,9 +65,13 @@ class Dispatcher:
         logger.info("Auto-dispatch loop stopped")
 
     async def _auto_dispatch_loop(self):
-        """Periodically try to dispatch jobs to all idle printers."""
+        """Periodically reconcile stale jobs and dispatch to idle printers."""
         while self._running:
             try:
+                # Self-heal first: close jobs stuck in 'printing' that no longer
+                # match what the printer is actually doing (e.g. the print
+                # finished/cancelled while the backend was down).
+                await self.reconcile_stale_jobs()
                 await self.try_dispatch_all()
             except Exception as e:
                 logger.error(f"Auto-dispatch error: {e}", exc_info=True)
@@ -374,6 +378,85 @@ class Dispatcher:
         # Notify frontends the queue changed
         from app.ws.hub import ws_hub
         await ws_hub.broadcast_queue_update()
+
+    async def reconcile_stale_jobs(self):
+        """Close jobs stuck in 'printing' that no longer reflect reality.
+
+        A job is considered live only if its assigned printer is currently
+        'printing' the SAME file. Otherwise (printer idle/cleared/printing
+        something else) the print already ended but we never got the event —
+        so we close the job and write a history entry. Printers that are
+        'offline' are left untouched (the print may still be running).
+        """
+        async with async_session() as session:
+            result = await session.execute(
+                select(PrintJob).where(PrintJob.status == "printing")
+            )
+            jobs = result.scalars().all()
+            if not jobs:
+                return
+
+            result = await session.execute(select(Printer))
+            printers = {p.id: p for p in result.scalars().all()}
+
+            changed = False
+            for job in jobs:
+                printer = printers.get(job.assigned_printer_id) if job.assigned_printer_id else None
+
+                # No printer assigned → orphan; just cancel (no history)
+                if printer is None:
+                    job.status = "cancelled"
+                    job.assigned_printer_id = None
+                    changed = True
+                    logger.info(f"Reconcile: job '{job.name}' had no printer → cancelled")
+                    continue
+
+                # Unknown state → leave it; the print might still be running
+                if printer.status == "offline":
+                    continue
+
+                job_file = os.path.basename(job.gcode_filename or "")
+                printer_file = os.path.basename(printer.current_filename or "")
+                is_live = (
+                    printer.status == "printing"
+                    and printer_file
+                    and printer_file == job_file
+                )
+                if is_live:
+                    continue
+
+                # Stale → close it
+                result_kind = "failed" if printer.status == "error" else "success"
+                history = PrintHistory(
+                    print_job_id=job.id,
+                    printer_id=printer.id,
+                    printer_name=printer.name,
+                    job_name=job.name,
+                    gcode_filename=job.gcode_original_name,
+                    material=job.required_material,
+                    estimated_weight_g=job.estimated_weight_g,
+                    started_at=job.started_at,
+                    completed_at=datetime.now(timezone.utc),
+                    duration_secs=None,
+                    result=result_kind,
+                )
+                session.add(history)
+                if result_kind == "success":
+                    job.copies_completed = job.copies
+                    job.status = "completed"
+                else:
+                    job.status = "cancelled"
+                job.assigned_printer_id = None
+                changed = True
+                logger.info(
+                    f"Reconcile: closed stale job '{job.name}' as {job.status} "
+                    f"(printer {printer.name} status={printer.status})"
+                )
+
+            if changed:
+                await session.commit()
+                from app.ws.hub import ws_hub
+                await ws_hub.broadcast_queue_update()
 
     async def try_dispatch_all(self):
         """Try to dispatch jobs to ALL available/standby printers.
