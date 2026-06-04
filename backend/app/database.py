@@ -66,6 +66,9 @@ async def init_db():
             ("printers", "lifetime_print_seconds", "INTEGER NOT NULL DEFAULT 0"),
             ("printers", "maint_credited_secs", "INTEGER NOT NULL DEFAULT 0"),
             ("printers", "filament_tracking_mode", "VARCHAR(20) NOT NULL DEFAULT 'manager'"),
+            ("maintenance_records", "custom_label", "VARCHAR(100)"),
+            ("maintenance_records", "custom_icon", "VARCHAR(20)"),
+            ("maintenance_records", "custom_description", "VARCHAR(300)"),
         ]
         # Optional SQL to run ONCE, only when a column is freshly added
         # (i.e. the ALTER TABLE succeeded). Used to backfill sensible values.

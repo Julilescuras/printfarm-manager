@@ -9,10 +9,16 @@ class MaintenanceRecordCreate(BaseModel):
     printer_id: int
     maintenance_type: str
     threshold_hours: float
+    custom_label: Optional[str] = None
+    custom_icon: Optional[str] = None
+    custom_description: Optional[str] = None
 
 
 class MaintenanceRecordUpdate(BaseModel):
     threshold_hours: Optional[float] = None
+    custom_label: Optional[str] = None
+    custom_icon: Optional[str] = None
+    custom_description: Optional[str] = None
 
 
 class MaintenanceResetRequest(BaseModel):
@@ -28,6 +34,9 @@ class MaintenanceRecordResponse(BaseModel):
     last_reset_at: Optional[datetime]
     last_reset_note: Optional[str]
     is_alert_active: bool
+    custom_label: Optional[str] = None
+    custom_icon: Optional[str] = None
+    custom_description: Optional[str] = None
     created_at: Optional[datetime]
 
     model_config = {"from_attributes": True}

@@ -69,6 +69,9 @@ export interface MaintenanceRecord {
   last_reset_at: string | null;
   last_reset_note: string | null;
   is_alert_active: boolean;
+  custom_label: string | null;
+  custom_icon: string | null;
+  custom_description: string | null;
   created_at: string | null;
 }
 
