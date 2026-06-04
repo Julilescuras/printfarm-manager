@@ -54,8 +54,8 @@ fi
 # timeout 300s: docker pull puede quedarse colgado indefinidamente sin red.
 echo ""
 echo "[2/3] Descargando imágenes Docker desde GitHub Container Registry..."
-if ! timeout 300 docker compose pull; then
-    echo "      ⚠ 'docker compose pull' falló o tardó >5 min — se intenta recrear con la caché local"
+if ! timeout 600 docker compose pull; then
+    echo "      ⚠ 'docker compose pull' falló o tardó >10 min — se intenta recrear con la caché local"
 fi
 
 # ── 3. Recrear servicios (PASO CRÍTICO) ───────────────────────────────────────
