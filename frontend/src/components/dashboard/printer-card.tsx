@@ -60,9 +60,8 @@ export const PrinterCard = React.memo(function PrinterCard({ printer, onUpdate }
         </div>
       </div>
 
-      {/* Print Progress (shown when printing or requires_clearance) */}
-      {(printer.status === "printing" ||
-        printer.status === "requires_clearance") && (
+      {/* Print Progress (shown only when actively printing) */}
+      {printer.status === "printing" && (
         <div className="flex items-center gap-4">
           <ProgressRing progress={printer.current_job_progress} size={72} />
           <div className="flex-1 min-w-0 space-y-1">
