@@ -60,6 +60,9 @@ async def create_maintenance_record(
         printer_id=data.printer_id,
         maintenance_type=data.maintenance_type,
         threshold_hours=data.threshold_hours,
+        custom_label=data.custom_label,
+        custom_icon=data.custom_icon,
+        custom_description=data.custom_description,
         last_reset_at=datetime.now(timezone.utc),
     )
     db.add(record)
@@ -84,8 +87,13 @@ async def update_maintenance(
 
     if data.threshold_hours is not None:
         record.threshold_hours = data.threshold_hours
-        # Re-evaluate alert
         record.is_alert_active = record.accumulated_hours >= record.threshold_hours
+    if data.custom_label is not None:
+        record.custom_label = data.custom_label or None
+    if data.custom_icon is not None:
+        record.custom_icon = data.custom_icon or None
+    if data.custom_description is not None:
+        record.custom_description = data.custom_description or None
 
     await db.commit()
     await db.refresh(record)

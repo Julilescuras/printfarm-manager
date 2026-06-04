@@ -29,6 +29,12 @@ class MaintenanceRecord(Base):
     last_reset_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_alert_active: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Custom display overrides (used when maintenance_type == "custom" or to
+    # personalize predefined types)
+    custom_label: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    custom_icon: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    custom_description: Mapped[str | None] = mapped_column(String(300), nullable=True)
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc)
@@ -44,6 +50,9 @@ class MaintenanceRecord(Base):
             "last_reset_at": self.last_reset_at.isoformat() if self.last_reset_at else None,
             "last_reset_note": self.last_reset_note,
             "is_alert_active": self.is_alert_active,
+            "custom_label": self.custom_label,
+            "custom_icon": self.custom_icon,
+            "custom_description": self.custom_description,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
