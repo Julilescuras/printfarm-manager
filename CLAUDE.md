@@ -12,12 +12,17 @@ Orquestador de granja de impresión 3D. Monorepo con:
 - **Directorio:** `/home/ziegelimpresoras3D/printfarm-manager`
 - **Acceso SSH programático:** usar `paramiko` (ya instalado en el proyecto), ver `scripts/update_server.py` como referencia
 
-## Versión actual: 1.4.8
+## Versión actual: 1.5.8
 
 ### Dónde vive la versión — tocar SOLO este archivo al hacer bump:
 1. `backend/app/version.py` → `APP_VERSION = "X.Y.Z"` ← fuente de verdad única
 
 El sidebar del frontend lee la versión desde `/api/status` (backend), no desde `package.json`. No tocar `package.json` para bumps de versión.
+
+### Convención de versioning (semver)
+- **X**.y.z → features grandes / funcionalidad nueva importante
+- x.**Y**.z → cambios de UI, mejoras medianas
+- x.y.**Z** → bugs, fixes, seguridad, errores de funcionamiento
 
 `main.py`, `updater.py` y `moonraker.py` importan `APP_VERSION` desde `version.py`. No tocar la versión en esos archivos directamente.
 
