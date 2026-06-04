@@ -180,6 +180,8 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     }),
+  deleteMaintenance: (id: number) =>
+    apiFetch<void>(`/api/maintenance/${id}`, { method: "DELETE" }),
 
   // Spoolman
   getSpoolmanHealth: () => apiFetch<any>("/api/spoolman/health"),

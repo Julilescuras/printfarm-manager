@@ -134,6 +134,23 @@ async def reset_maintenance(
     }
 
 
+@router.delete("/{record_id}", status_code=204)
+async def delete_maintenance_record(
+    record_id: int, db: AsyncSession = Depends(get_db)
+):
+    """Delete a maintenance record and its history logs."""
+    result = await db.execute(
+        select(MaintenanceRecord).where(MaintenanceRecord.id == record_id)
+    )
+    record = result.scalar_one_or_none()
+    if not record:
+        raise HTTPException(status_code=404, detail="Record not found")
+
+    await db.delete(record)
+    await db.commit()
+    await ws_hub.broadcast_maintenance_update()
+
+
 @router.get("/{record_id}/history", response_model=List[MaintenanceLogResponse])
 async def get_maintenance_history(
     record_id: int, db: AsyncSession = Depends(get_db)
