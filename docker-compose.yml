@@ -17,6 +17,9 @@ services:
     depends_on:
       - spoolman
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     networks:
       - printfarm
     healthcheck:
