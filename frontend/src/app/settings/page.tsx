@@ -29,6 +29,7 @@ export default function SettingsPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   // ── Update state ──────────────────────────────────────────────────────────
+  const [currentVersion, setCurrentVersion] = useState<string>("");
   const [updateInfo, setUpdateInfo] = useState<any>(null);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -39,6 +40,8 @@ export default function SettingsPage() {
 
   useEffect(() => {
     loadSettings();
+    // Cargar versión actual desde /api/status (sin DNS externo, siempre disponible)
+    api.getSystemStatus().then((d) => setCurrentVersion(d.version || "")).catch(() => {});
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
 
@@ -174,21 +177,25 @@ export default function SettingsPage() {
           Actualización del Sistema
         </h2>
 
-        {/* Version info */}
-        {updateInfo && (
-          <div className="space-y-2 text-sm">
+        {/* Version info — siempre visible */}
+        <div className="space-y-2 text-sm">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Versión instalada:</span>
+            <span className="font-mono font-semibold">{currentVersion || updateInfo?.current_version || "—"}</span>
+          </div>
+          {updateInfo?.installed_commit && (
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Versión instalada:</span>
-              <span className="font-mono font-semibold">{updateInfo.current_version}</span>
+              <span className="text-muted-foreground flex items-center gap-1">
+                <GitCommit className="w-3 h-3" /> Commit instalado:
+              </span>
+              <span className="font-mono text-xs text-muted-foreground">{updateInfo.installed_commit}</span>
             </div>
-            {updateInfo.installed_commit && (
-              <div className="flex justify-between">
-                <span className="text-muted-foreground flex items-center gap-1">
-                  <GitCommit className="w-3 h-3" /> Commit instalado:
-                </span>
-                <span className="font-mono text-xs text-muted-foreground">{updateInfo.installed_commit}</span>
-              </div>
-            )}
+          )}
+        </div>
+
+        {/* GitHub comparison info — solo cuando el check funcionó */}
+        {updateInfo && updateInfo.check_ok && (
+          <div className="space-y-2 text-sm">
             {updateInfo.latest_commit && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground flex items-center gap-1">
@@ -245,7 +252,7 @@ export default function SettingsPage() {
           </button>
           <button
             onClick={handleApplyUpdate}
-            disabled={isUpdating || isCheckingUpdate || !updateInfo || !updateInfo.check_ok || updateInfo.up_to_date === true}
+            disabled={isUpdating || isCheckingUpdate}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white font-medium text-sm hover:bg-emerald-500 transition-colors disabled:opacity-50"
           >
             {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
