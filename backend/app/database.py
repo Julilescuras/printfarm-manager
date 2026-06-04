@@ -93,3 +93,24 @@ async def init_db():
                     await conn.execute(text(backfill_sql))
                 except Exception:
                     pass
+
+        # Sync lifetime_print_seconds with maintenance records for printers where
+        # it wasn't backfilled at migration time (column was added with DEFAULT 0
+        # while records already had historical hours from the old system).
+        # Idempotent: after the first run lifetime_print_seconds >= max accumulated.
+        try:
+            await conn.execute(text("""
+                UPDATE printers
+                SET lifetime_print_seconds = (
+                    SELECT CAST(MAX(mr.accumulated_hours * 3600) AS INTEGER)
+                    FROM maintenance_records mr
+                    WHERE mr.printer_id = printers.id
+                )
+                WHERE (
+                    SELECT COALESCE(MAX(mr.accumulated_hours * 3600), 0)
+                    FROM maintenance_records mr
+                    WHERE mr.printer_id = printers.id
+                ) > lifetime_print_seconds
+            """))
+        except Exception:
+            pass
