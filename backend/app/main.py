@@ -12,6 +12,7 @@ This is the main application that ties everything together:
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
@@ -97,6 +98,7 @@ async def _seed_printers_from_config():
                         printer_id=printer.id,
                         maintenance_type=item["type"],
                         threshold_hours=item["hours"],
+                        last_reset_at=datetime.now(timezone.utc),
                     )
                     session.add(record)
                 logger.info(

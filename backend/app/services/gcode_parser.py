@@ -79,23 +79,30 @@ def parse_gcode(file_path: str, material: str = "PLA") -> dict:
     estimated_weight: Optional[float] = None
 
     try:
-        # Read first and last lines where slicer comments live
+        # Read first lines where slicer comments often live (text mode is fine
+        # for a forward read).
+        lines = []
         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-            lines = []
-            # Read first 300 lines
             for i, line in enumerate(f):
                 if i >= 300:
                     break
                 lines.append(line.strip())
 
-            # Efficiently read last ~10000 bytes to get the last ~300 lines without loading whole file
-            f.seek(0, 2)  # seek to end
-            file_size = f.tell()
-            chunk_size = min(10000, file_size)
-            if chunk_size > 0:
-                f.seek(file_size - chunk_size)
-                tail_lines = f.read().splitlines()
-                lines.extend([l.strip() for l in tail_lines[-300:]])
+        # Read the last ~10 KB in BINARY mode. Doing seek()/tell() on a text-mode
+        # file is unreliable (tell() returns an opaque cookie, not a byte offset),
+        # which could read garbage or fail on non-ASCII files. Binary seek is
+        # well-defined.
+        try:
+            with open(file_path, "rb") as fb:
+                fb.seek(0, 2)  # end
+                file_size = fb.tell()
+                chunk_size = min(10000, file_size)
+                if chunk_size > 0:
+                    fb.seek(file_size - chunk_size)
+                    tail = fb.read().decode("utf-8", errors="ignore")
+                    lines.extend([l.strip() for l in tail.splitlines()[-300:]])
+        except OSError:
+            pass
 
         for line in lines:
             if not line.startswith(";"):

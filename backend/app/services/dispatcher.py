@@ -44,6 +44,12 @@ class Dispatcher:
     def __init__(self):
         self._auto_dispatch_task: Optional[asyncio.Task] = None
         self._running = False
+        # Serializes ALL dispatch decisions. Without it, the 30s auto-loop and
+        # the endpoint triggers (add_job, clone, requeue, clear-bed, set status)
+        # can overlap: between selecting a pending job and committing the start
+        # there are long awaits (Spoolman HTTP + G-code upload), so two dispatches
+        # to different printers could grab the SAME job and start it on both.
+        self._dispatch_lock = asyncio.Lock()
 
     # ── Auto-dispatch loop ──────────────────────────────────────────
 
@@ -83,8 +89,11 @@ class Dispatcher:
         """
         Try to dispatch the next compatible job to the given printer.
         Returns True if a job was dispatched, False otherwise.
+
+        Held under a global lock so the whole "pick a pending job → start it"
+        sequence is atomic across concurrent callers (auto-loop + endpoints).
         """
-        async with async_session() as session:
+        async with self._dispatch_lock, async_session() as session:
             # Get the printer
             result = await session.execute(
                 select(Printer).where(Printer.id == printer_id)
@@ -268,21 +277,18 @@ class Dispatcher:
         if not started:
             return False
 
-        # Try to get thumbnail
-        thumbnail = await client.get_thumbnail_url(moonraker_path)
-
         # Update job status
         job.status = "printing"
         job.assigned_printer_id = printer.id
         job.started_at = datetime.now(timezone.utc)
 
-        # Update printer status
+        # Update printer status. The G-code preview is now served by the manager
+        # from the stored file (see /api/printers/{id}/thumbnail), so there's no
+        # need to fetch a thumbnail URL from Moonraker here.
         printer.status = "printing"
         printer.disconnected_while_printing = False
         printer.current_filename = gcode_name
         printer.current_job_progress = 0.0
-        if thumbnail:
-            printer.thumbnail_url = thumbnail
 
         await session.commit()
 

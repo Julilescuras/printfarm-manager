@@ -99,6 +99,26 @@ async def update_printer(
     await db.commit()
     await db.refresh(printer)
 
+    # If the printer is now Bowden, make sure the PTFE-tube maintenance task
+    # exists. It's only seeded at creation time, so switching to Bowden on edit
+    # would otherwise silently skip it (contradicting what the form promises).
+    if printer.extruder_type == "bowden":
+        existing = await db.execute(
+            select(MaintenanceRecord).where(
+                MaintenanceRecord.printer_id == printer.id,
+                MaintenanceRecord.maintenance_type == "ptfe_tube",
+            )
+        )
+        if not existing.scalar_one_or_none():
+            db.add(MaintenanceRecord(
+                printer_id=printer.id,
+                maintenance_type="ptfe_tube",
+                threshold_hours=settings.default_ptfe_tube_threshold,
+                last_reset_at=datetime.now(timezone.utc),
+            ))
+            await db.commit()
+            await ws_hub.broadcast_maintenance_update()
+
     # Reconnect if URL changed
     if url_changed:
         await moonraker_manager.add_printer(printer.id, printer.moonraker_url)
