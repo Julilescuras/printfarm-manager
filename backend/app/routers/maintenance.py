@@ -102,6 +102,39 @@ async def update_maintenance(
     return record
 
 
+@router.post("/reset-all")
+async def reset_all_maintenance(db: AsyncSession = Depends(get_db)):
+    """DANGER: Reset the accumulated hours of EVERY maintenance counter on EVERY
+    printer back to zero. Each reset is logged to the immutable history. Triggered
+    from the 'Zona peligrosa' in Configuración with explicit confirmation."""
+    result = await db.execute(select(MaintenanceRecord))
+    records = result.scalars().all()
+
+    count = 0
+    for record in records:
+        # Log before zeroing so the history keeps the pre-reset hours.
+        db.add(MaintenanceLog(
+            record_id=record.id,
+            printer_id=record.printer_id,
+            maintenance_type=record.maintenance_type,
+            hours_at_reset=record.accumulated_hours,
+            note="Reinicio masivo desde Configuración",
+        ))
+        record.accumulated_hours = 0.0
+        record.is_alert_active = False
+        record.last_reset_at = datetime.now(timezone.utc)
+        record.last_reset_note = "Reinicio masivo"
+        count += 1
+
+    await db.commit()
+    await ws_hub.broadcast_maintenance_update()
+    return {
+        "status": "ok",
+        "reset_count": count,
+        "message": f"Se reiniciaron {count} contadores de mantenimiento",
+    }
+
+
 @router.post("/{record_id}/reset")
 async def reset_maintenance(
     record_id: int,

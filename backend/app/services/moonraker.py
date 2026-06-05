@@ -110,12 +110,17 @@ class MoonrakerClient:
                         await self._handle_message(json.loads(message))
 
             except websockets.ConnectionClosed:
+                # Typical of a power loss / cable pull mid-print: the socket just
+                # drops. Previously we did NOT mark offline here, so the card
+                # stayed frozen on 'printing'. Always reflect the disconnect.
                 logger.warning(f"[Printer {self.printer_id}] Connection closed, reconnecting...")
+                await self._mark_disconnected()
             except (ConnectionRefusedError, OSError) as e:
                 logger.warning(f"[Printer {self.printer_id}] Cannot connect ({e}), retrying...")
-                await self._update_printer_db(status="offline")
+                await self._mark_disconnected()
             except Exception as e:
                 logger.error(f"[Printer {self.printer_id}] Unexpected error: {e}", exc_info=True)
+                await self._mark_disconnected()
             finally:
                 self._connected = False
 
@@ -347,6 +352,12 @@ class MoonrakerClient:
                 if current_db_status == "paused" and updates["status"] in ("standby",):
                     del updates["status"]
 
+            # Any live state report means the printer is back — clear a stale
+            # "disconnected while printing" flag. (_update_printer_db only writes
+            # fields that actually changed, so this is a no-op when already clear.)
+            if updates.get("status") and updates["status"] != "offline":
+                updates["disconnected_while_printing"] = False
+
             await self._update_printer_db(**updates)
 
     async def _subscribe_objects(self, ws):
@@ -426,6 +437,22 @@ class MoonrakerClient:
                     # Notify the WebSocket hub of state changes (always broadcast)
                     if self.on_state_change:
                         await self.on_state_change(printer.to_dict())
+
+    async def _mark_disconnected(self):
+        """Mark the printer offline after a connection loss.
+
+        If the drop happened mid-print, flag it as a likely power/connection loss
+        so the UI can show a warning instead of a frozen 'printing' card. The flag
+        is cleared automatically once the printer reports a live state again (see
+        _process_status_update). A clean, intentional disconnect raises
+        CancelledError and never reaches here, so we won't false-flag on shutdown.
+        """
+        prev = await self._get_current_db_status()
+        was_printing = prev in ("printing", "paused")
+        await self._update_printer_db(
+            status="offline",
+            disconnected_while_printing=was_printing,
+        )
 
     async def _get_current_db_status(self) -> str:
         """Get the current status from the database."""

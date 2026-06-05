@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { AppearancePanel } from "@/components/settings/appearance-panel";
+import { DangerZone } from "@/components/settings/danger-zone";
 
 export default function SettingsPage() {
   const [botToken, setBotToken] = useState("");
@@ -435,6 +436,9 @@ export default function SettingsPage() {
           </ol>
         </div>
       </div>
+
+      {/* Danger Zone — hidden/collapsed, with typed confirmation */}
+      <DangerZone />
     </div>
   );
 }

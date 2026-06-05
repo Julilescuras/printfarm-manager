@@ -7,6 +7,7 @@ import { getStatusInfo, formatDuration } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { ProgressRing } from "./progress-ring";
 import { TemperatureGauge } from "./temperature-gauge";
+import { PrinterMediaView } from "./printer-media-view";
 
 interface PrinterCardProps {
   printer: PrinterState;
@@ -77,19 +78,12 @@ export const PrinterCard = React.memo(function PrinterCard({ printer, onUpdate }
                 <span>ETA: {formatDuration(printer.eta_seconds)}</span>
               </div>
             )}
-            {/* Thumbnail */}
-            {printer.thumbnail_url && (
-              <div className="mt-1 w-full h-16 rounded-md overflow-hidden bg-secondary">
-                <img
-                  src={printer.thumbnail_url}
-                  alt="Print preview"
-                  className="w-full h-full object-contain"
-                />
-              </div>
-            )}
           </div>
         </div>
       )}
+
+      {/* Camera / G-code preview (with toggle when both available) */}
+      <PrinterMediaView printer={printer} heightClass="h-28" />
 
       {/* Temperatures */}
       {printer.status !== "offline" && (
@@ -153,15 +147,36 @@ export const PrinterCard = React.memo(function PrinterCard({ printer, onUpdate }
 
       {/* Offline message */}
       {printer.status === "offline" && (
-        <div className="text-center py-4">
-          <div className="text-3xl mb-2">📡</div>
-          <p className="text-sm text-muted-foreground">
-            Sin conexión a Moonraker
-          </p>
-          <p className="text-xs text-muted-foreground/60 mt-1">
-            {printer.moonraker_url}
-          </p>
-        </div>
+        printer.disconnected_while_printing ? (
+          <div className="text-center py-4 rounded-md bg-amber-500/10 border border-amber-500/30">
+            <div className="text-3xl mb-2">⚡</div>
+            <p className="text-sm font-semibold text-amber-400">
+              Conexión perdida durante la impresión
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Posible corte de energía · última lectura{" "}
+              {Math.round((printer.current_job_progress || 0) * 100)}%
+            </p>
+            {printer.current_filename && (
+              <p className="text-xs text-muted-foreground/70 mt-1 truncate px-3">
+                {printer.current_filename}
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground/50 mt-1">
+              {printer.moonraker_url}
+            </p>
+          </div>
+        ) : (
+          <div className="text-center py-4">
+            <div className="text-3xl mb-2">📡</div>
+            <p className="text-sm text-muted-foreground">
+              Sin conexión a Moonraker
+            </p>
+            <p className="text-xs text-muted-foreground/60 mt-1">
+              {printer.moonraker_url}
+            </p>
+          </div>
+        )
       )}
     </div>
   );

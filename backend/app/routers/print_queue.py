@@ -86,6 +86,7 @@ async def add_job(
     required_nozzle: float = Form(0.4),
     required_material: str = Form("PLA"),
     required_color: Optional[str] = Form(None),
+    required_filament_id: Optional[int] = Form(None),
     copies: int = Form(1),
     priority: int = Form(0),
     gcode: UploadFile = File(...),
@@ -133,6 +134,7 @@ async def add_job(
             required_nozzle=required_nozzle,
             required_material=required_material,
             required_color=required_color,
+            required_filament_id=required_filament_id,
             copies=1,
             priority=priority,
             estimated_time_secs=parsed.get("estimated_time_secs"),
@@ -152,6 +154,53 @@ async def add_job(
     await dispatcher.try_dispatch_all()
 
     return created_jobs
+
+
+@router.post("/gcodes/purge")
+async def purge_gcodes(db: AsyncSession = Depends(get_db)):
+    """DANGER: Delete stored G-code files from the server to free disk space.
+
+    Files referenced by an ACTIVE job (pending or printing) are kept, so the
+    queue is never broken. Everything else (history, completed, cancelled) is
+    removed. Triggered from the 'Zona peligrosa' in Configuración.
+    """
+    # Paths we must keep: G-codes still needed by the live queue.
+    result = await db.execute(
+        select(PrintJob.gcode_filename).where(
+            PrintJob.status.in_(["pending", "printing"])
+        )
+    )
+    keep = {os.path.abspath(p) for (p,) in result.all() if p}
+
+    deleted = 0
+    freed_bytes = 0
+
+    def _purge() -> tuple[int, int]:
+        d = 0
+        f = 0
+        for root, _dirs, files in os.walk(settings.gcodes_path):
+            for fn in files:
+                full = os.path.abspath(os.path.join(root, fn))
+                if full in keep:
+                    continue
+                try:
+                    f += os.path.getsize(full)
+                    os.remove(full)
+                    d += 1
+                except OSError:
+                    pass
+        return d, f
+
+    if os.path.isdir(settings.gcodes_path):
+        deleted, freed_bytes = await asyncio.to_thread(_purge)
+
+    return {
+        "status": "ok",
+        "deleted": deleted,
+        "kept": len(keep),
+        "freed_mb": round(freed_bytes / (1024 * 1024), 1),
+        "message": f"Se eliminaron {deleted} archivos G-code ({round(freed_bytes / (1024 * 1024), 1)} MB liberados)",
+    }
 
 
 @router.put("/reorder")
@@ -210,8 +259,16 @@ async def update_job(
 
 @router.delete("/{job_id}", status_code=204)
 async def cancel_job(job_id: int, db: AsyncSession = Depends(get_db)):
-    """Cancel a pending job. Cancelling a print that is already running is done
-    from the printer detail screen (POST /api/printers/{id}/cancel-print)."""
+    """Remove a job from the queue.
+
+    A pending job never printed and never produced a history entry, so deleting
+    it must NOT pollute the 'Cancelados' tab (which is reserved for prints that
+    were actually cancelled or failed). We hard-delete the queue item instead.
+    The print history is independent and is preserved.
+
+    Cancelling a print that is already RUNNING is a different action, done from
+    the printer detail screen (POST /api/printers/{id}/cancel-print).
+    """
     result = await db.execute(select(PrintJob).where(PrintJob.id == job_id))
     job = result.scalar_one_or_none()
     if not job:
@@ -223,7 +280,10 @@ async def cancel_job(job_id: int, db: AsyncSession = Depends(get_db)):
             detail="Para cancelar una impresión en curso, usá la pantalla de la impresora.",
         )
 
-    job.status = "cancelled"
+    # Hard-delete the queue item. The shared G-code file on disk is intentionally
+    # left untouched (other copies may reference it; use 'vaciar G-codes' in
+    # Configuración to clean storage).
+    await db.delete(job)
     await db.commit()
     await ws_hub.broadcast_queue_update()
 
@@ -254,6 +314,7 @@ async def clone_job(job_id: int, copies: int = 1, db: AsyncSession = Depends(get
             required_nozzle=src.required_nozzle,
             required_material=src.required_material,
             required_color=src.required_color,
+            required_filament_id=src.required_filament_id,
             copies=1,
             priority=src.priority,
             estimated_time_secs=src.estimated_time_secs,
@@ -335,6 +396,7 @@ async def clone_from_history(
             required_nozzle=original_job.required_nozzle,
             required_material=original_job.required_material,
             required_color=original_job.required_color,
+            required_filament_id=original_job.required_filament_id,
             copies=copies,
             priority=0,
             estimated_time_secs=original_job.estimated_time_secs,

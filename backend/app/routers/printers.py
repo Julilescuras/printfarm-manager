@@ -3,18 +3,21 @@ Printers Router — CRUD operations, bed clearance, and spool assignment.
 The clear-bed endpoint is the critical "Vaciar Cama" action.
 """
 
+import asyncio
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.config import settings
 from app.models.printer import Printer
+from app.models.print_job import PrintJob
 from app.models.maintenance import MaintenanceRecord
 from app.schemas.printer import PrinterCreate, PrinterUpdate, PrinterResponse, PrinterAssignSpool, PrinterSetStatus
 from app.services.moonraker import moonraker_manager
 from app.services.dispatcher import dispatcher
+from app.services.gcode_thumbnail import extract_gcode_thumbnail
 from app.ws.hub import ws_hub
 from datetime import datetime, timezone
 
@@ -114,6 +117,38 @@ async def delete_printer(printer_id: int, db: AsyncSession = Depends(get_db)):
     await moonraker_manager.remove_printer(printer_id)
     await db.delete(printer)
     await db.commit()
+
+
+@router.get("/{printer_id}/thumbnail")
+async def get_printer_thumbnail(printer_id: int, db: AsyncSession = Depends(get_db)):
+    """Serve the embedded G-code preview of the printer's ACTIVE local job.
+
+    We extract the thumbnail from the file we already stored (independent of the
+    printer's own network), so the browser can always reach it. 404 if the
+    printer isn't running a manager-dispatched job or the G-code has no preview.
+    """
+    result = await db.execute(
+        select(PrintJob)
+        .where(
+            PrintJob.assigned_printer_id == printer_id,
+            PrintJob.status == "printing",
+        )
+        .limit(1)
+    )
+    job = result.scalar_one_or_none()
+    if not job or not job.gcode_filename:
+        raise HTTPException(status_code=404, detail="No hay preview disponible")
+
+    img = await asyncio.to_thread(extract_gcode_thumbnail, job.gcode_filename)
+    if not img:
+        raise HTTPException(status_code=404, detail="El G-code no tiene miniatura embebida")
+
+    media_type = "image/jpeg" if img[:2] == b"\xff\xd8" else "image/png"
+    return Response(
+        content=img,
+        media_type=media_type,
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 @router.post("/{printer_id}/clear-bed")

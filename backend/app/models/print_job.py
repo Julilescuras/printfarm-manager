@@ -25,6 +25,11 @@ class PrintJob(Base):
     required_nozzle: Mapped[float] = mapped_column(Float, nullable=False, default=0.4)
     required_material: Mapped[str] = mapped_column(String(50), nullable=False, default="PLA")
     required_color: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # Spoolman filament type id. When set, dispatch requires the loaded spool to
+    # be of EXACTLY this filament (material + color come for free). This is the
+    # robust match; required_material/required_color are kept for display and as
+    # a legacy fallback for jobs created before filament-based matching.
+    required_filament_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # G-code parsed estimates
     estimated_time_secs: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -67,6 +72,7 @@ class PrintJob(Base):
             "required_nozzle": self.required_nozzle,
             "required_material": self.required_material,
             "required_color": self.required_color,
+            "required_filament_id": self.required_filament_id,
             "estimated_time_secs": self.estimated_time_secs,
             "estimated_weight_g": self.estimated_weight_g,
             "copies": self.copies,

@@ -55,6 +55,7 @@ async def init_db():
         migrations = [
             ("print_jobs", "estimated_time_secs", "INTEGER"),
             ("print_jobs", "estimated_weight_g", "REAL"),
+            ("print_jobs", "required_filament_id", "INTEGER"),
             ("print_history", "printer_name", "VARCHAR(100) NOT NULL DEFAULT ''"),
             ("print_history", "job_name", "VARCHAR(200) NOT NULL DEFAULT ''"),
             ("print_history", "material", "VARCHAR(50) NOT NULL DEFAULT ''"),
@@ -63,6 +64,7 @@ async def init_db():
             ("print_history", "result", "VARCHAR(50) NOT NULL DEFAULT 'success'"),
             ("print_jobs", "started_at", "DATETIME"),
             ("printers", "camera_url", "VARCHAR(255)"),
+            ("printers", "disconnected_while_printing", "INTEGER NOT NULL DEFAULT 0"),
             ("printers", "lifetime_print_seconds", "INTEGER NOT NULL DEFAULT 0"),
             ("printers", "maint_credited_secs", "INTEGER NOT NULL DEFAULT 0"),
             ("printers", "filament_tracking_mode", "VARCHAR(20) NOT NULL DEFAULT 'manager'"),

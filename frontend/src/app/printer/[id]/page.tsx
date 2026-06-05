@@ -15,6 +15,7 @@ import {
 import { useWSContext } from "@/providers/websocket-provider";
 import { api } from "@/lib/api";
 import { getStatusInfo, formatDuration } from "@/lib/utils";
+import { PrinterMediaView } from "@/components/dashboard/printer-media-view";
 
 export default function PrinterDetailsPage() {
   const params = useParams();
@@ -290,6 +291,21 @@ export default function PrinterDetailsPage() {
                 </div>
               </div>
             </div>
+          ) : printer.disconnected_while_printing ? (
+            <div className="flex flex-col items-center justify-center h-48 space-y-3 text-center px-4">
+              <div className="text-4xl">⚡</div>
+              <p className="text-amber-400 font-semibold">
+                Conexión perdida durante la impresión
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Posible corte de energía. Última lectura:{" "}
+                {((printer.current_job_progress || 0) * 100).toFixed(1)}%
+                {printer.current_filename ? ` · ${printer.current_filename}` : ""}
+              </p>
+              <p className="text-xs text-muted-foreground/60">
+                Cuando vuelva la conexión, el estado se actualizará solo.
+              </p>
+            </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-48 space-y-3 text-muted-foreground">
               <Box className="w-12 h-12 opacity-50" />
@@ -298,31 +314,15 @@ export default function PrinterDetailsPage() {
           )}
         </div>
 
-        {/* Camera Feed */}
-        {printer.camera_url && (
+        {/* Camera / G-code preview (with toggle when both available) */}
+        {(printer.camera_url ||
+          printer.status === "printing" ||
+          printer.disconnected_while_printing) && (
           <div className="glass-card p-6 md:col-span-3">
             <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
-              <Video className="w-5 h-5 text-primary" /> Cámara en vivo
+              <Video className="w-5 h-5 text-primary" /> Cámara / Previsualización
             </h2>
-            <div className="rounded-lg overflow-hidden bg-black aspect-video flex items-center justify-center">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={printer.camera_url}
-                alt="Camera feed"
-                className="w-full h-full object-contain"
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).style.display = "none";
-                  (e.currentTarget.nextSibling as HTMLElement).style.display = "flex";
-                }}
-              />
-              <div
-                className="hidden flex-col items-center gap-2 text-muted-foreground text-sm"
-              >
-                <Video className="w-8 h-8 opacity-40" />
-                <span>No se puede conectar a la cámara</span>
-                <span className="text-xs font-mono opacity-60">{printer.camera_url}</span>
-              </div>
-            </div>
+            <PrinterMediaView printer={printer} heightClass="aspect-video w-full" />
           </div>
         )}
 

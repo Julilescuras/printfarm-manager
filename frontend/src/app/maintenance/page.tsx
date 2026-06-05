@@ -454,7 +454,7 @@ export default function MaintenancePage() {
                 </button>
               </div>
 
-              {/* Task list */}
+              {/* Task list — compact grid (2 cols on wide screens) */}
               {selectedRecords.length === 0 ? (
                 <div className="p-12 text-center text-muted-foreground">
                   <p className="text-sm">Sin tareas de mantenimiento</p>
@@ -463,7 +463,7 @@ export default function MaintenancePage() {
                   </button>
                 </div>
               ) : (
-                <div className="divide-y divide-border">
+                <div className="p-3 grid grid-cols-1 xl:grid-cols-2 gap-2.5">
                   {selectedRecords.map((record) => {
                     const { label, icon, description, bowdenOnly } = getDisplay(record);
                     const isAlert = record.is_alert_active;
@@ -471,83 +471,86 @@ export default function MaintenancePage() {
                     const remaining = Math.max(record.threshold_hours - record.accumulated_hours, 0);
 
                     return (
-                      <div key={record.id} className={`px-5 py-4 flex items-start gap-4 ${isAlert ? "bg-amber-500/5" : ""}`}>
-                        <div className="text-2xl shrink-0 mt-0.5">{icon}</div>
-
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                            <h4 className="text-sm font-medium">{label}</h4>
-                            {bowdenOnly && (
-                              <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">Bowden</span>
-                            )}
-                            {record.maintenance_type === "custom" && (
-                              <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">Custom</span>
-                            )}
-                            {isAlert && (
-                              <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 font-medium">⚠️ Atención</span>
-                            )}
-                          </div>
-                          {description && <p className="text-xs text-muted-foreground mb-2">{description}</p>}
-
-                          <div>
-                            <div className="flex justify-between text-xs text-muted-foreground mb-1">
-                              <span className="font-mono">{formatHours(record.accumulated_hours)} / {formatHours(record.threshold_hours)}</span>
-                              <span className="font-mono">{pct.toFixed(0)}%</span>
-                            </div>
-                            <div className="w-full h-1.5 rounded-full bg-secondary overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all duration-500 ${isAlert ? "bg-amber-500" : pct > 75 ? "bg-amber-400" : "bg-primary"}`}
-                                style={{ width: `${pct}%` }}
-                              />
-                            </div>
-                            <div className="mt-1 text-xs">
-                              {isAlert
-                                ? <span className="text-amber-400 font-medium">Umbral superado — realizar mantenimiento</span>
-                                : <span className={remaining < record.threshold_hours * 0.25 ? "text-amber-400" : "text-muted-foreground/60"}>
-                                    Quedan {formatHours(remaining)}
-                                  </span>
-                              }
-                            </div>
-                          </div>
-
-                          {record.last_reset_at && (
-                            <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1.5">
-                              <Clock className="w-3 h-3" />
-                              Último reset: {new Date(record.last_reset_at).toLocaleDateString("es-AR")}
-                              {record.last_reset_note && (
-                                <span className="ml-1 italic truncate max-w-[240px] opacity-70">— {record.last_reset_note}</span>
+                      <div
+                        key={record.id}
+                        className={`rounded-lg border p-3 ${
+                          isAlert ? "border-amber-500/30 bg-amber-500/5" : "border-border bg-secondary/20"
+                        }`}
+                      >
+                        {/* Row 1: icon + title + icon actions */}
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg shrink-0" title={description}>{icon}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <h4 className="text-sm font-medium truncate" title={description}>{label}</h4>
+                              {isAlert && <span title="Umbral superado — realizar mantenimiento" className="text-amber-400 text-xs shrink-0">⚠️</span>}
+                              {bowdenOnly && (
+                                <span className="text-[10px] px-1 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">Bowden</span>
+                              )}
+                              {record.maintenance_type === "custom" && (
+                                <span className="text-[10px] px-1 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 shrink-0">Custom</span>
                               )}
                             </div>
-                          )}
+                          </div>
+                          {/* Icon actions */}
+                          <div className="flex items-center gap-0.5 shrink-0">
+                            <button
+                              onClick={() => setResetTarget(record)}
+                              title="Resetear contador"
+                              className={`p-1.5 rounded-md transition-colors ${
+                                isAlert
+                                  ? "text-amber-400 hover:bg-amber-500/20"
+                                  : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                              }`}
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => setEditTarget(record)} title="Editar"
+                              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => setHistoryTarget(record)} title="Historial"
+                              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                              <History className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => handleDelete(record)} title="Eliminar"
+                              className="p-1.5 rounded-md text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
 
-                        {/* Actions */}
-                        <div className="flex gap-1.5 shrink-0 flex-wrap justify-end">
-                          <button
-                            onClick={() => setResetTarget(record)}
-                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                              isAlert
-                                ? "bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 border border-amber-500/30"
-                                : "bg-secondary text-muted-foreground hover:text-foreground"
-                            }`}
-                          >
-                            <RotateCcw className="w-3 h-3" /> Reset
-                          </button>
-                          <button onClick={() => setEditTarget(record)}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs bg-secondary text-muted-foreground hover:text-foreground transition-colors"
-                          >
-                            <Pencil className="w-3 h-3" /> Editar
-                          </button>
-                          <button onClick={() => setHistoryTarget(record)}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs bg-secondary text-muted-foreground hover:text-foreground transition-colors"
-                          >
-                            <History className="w-3 h-3" /> Historial
-                          </button>
-                          <button onClick={() => handleDelete(record)}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs bg-secondary text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
+                        {/* Row 2: progress */}
+                        <div className="mt-2">
+                          <div className="flex justify-between text-xs font-mono text-muted-foreground mb-1">
+                            <span>{formatHours(record.accumulated_hours)} / {formatHours(record.threshold_hours)}</span>
+                            <span>{pct.toFixed(0)}%</span>
+                          </div>
+                          <div className="w-full h-1.5 rounded-full bg-secondary overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-500 ${isAlert ? "bg-amber-500" : pct > 75 ? "bg-amber-400" : "bg-primary"}`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                          {/* Row 3: remaining + last reset, single line */}
+                          <div className="flex items-center justify-between gap-2 mt-1 text-xs">
+                            {isAlert ? (
+                              <span className="text-amber-400 font-medium">Hacer mantenimiento</span>
+                            ) : (
+                              <span className={remaining < record.threshold_hours * 0.25 ? "text-amber-400" : "text-muted-foreground/60"}>
+                                Quedan {formatHours(remaining)}
+                              </span>
+                            )}
+                            {record.last_reset_at && (
+                              <span
+                                className="flex items-center gap-1 text-muted-foreground/60 shrink-0"
+                                title={record.last_reset_note ? `Nota: ${record.last_reset_note}` : "Sin nota"}
+                              >
+                                <Clock className="w-3 h-3" />
+                                {new Date(record.last_reset_at).toLocaleDateString("es-AR")}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );

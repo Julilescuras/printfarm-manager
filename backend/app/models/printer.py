@@ -3,7 +3,7 @@ Printer ORM model — stores static config and runtime state for each printer.
 """
 
 from datetime import datetime, timezone
-from sqlalchemy import String, Float, Integer, DateTime, Text
+from sqlalchemy import String, Float, Integer, DateTime, Text, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -38,6 +38,11 @@ class Printer(Base):
         String(50), default="offline",
         comment="printing | standby | requires_clearance | available | paused | error | offline"
     )
+    # True when the connection to Moonraker dropped while the printer was mid-print
+    # (likely a power/connection loss). Lets the UI warn instead of showing a
+    # frozen 'printing' card. Cleared automatically once the printer reports a
+    # live state again.
+    disconnected_while_printing: Mapped[bool] = mapped_column(Boolean, default=False)
     current_job_progress: Mapped[float] = mapped_column(Float, default=0.0)
     hotend_temp: Mapped[float] = mapped_column(Float, default=0.0)
     hotend_target: Mapped[float] = mapped_column(Float, default=0.0)
@@ -76,6 +81,7 @@ class Printer(Base):
             "filament_tracking_mode": self.filament_tracking_mode,
             "fluidd_url": self.fluidd_url,
             "status": self.status,
+            "disconnected_while_printing": self.disconnected_while_printing,
             "current_job_progress": self.current_job_progress,
             "hotend_temp": self.hotend_temp,
             "hotend_target": self.hotend_target,
