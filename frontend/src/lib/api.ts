@@ -15,6 +15,12 @@ if (typeof window !== "undefined") {
 // they can legitimately take much longer than a normal API call.
 const DEFAULT_TIMEOUT_MS = 20_000;
 
+/** Absolute URL to a backend path — for use in <img src> and similar, where the
+ *  browser must hit the backend directly (not the Next.js origin). */
+export function apiUrl(path: string): string {
+  return `${API_BASE}${path}`;
+}
+
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {}
@@ -182,6 +188,12 @@ export const api = {
     }),
   deleteMaintenance: (id: number) =>
     apiFetch<void>(`/api/maintenance/${id}`, { method: "DELETE" }),
+  resetAllMaintenance: () =>
+    apiFetch<any>("/api/maintenance/reset-all", { method: "POST" }),
+
+  // Danger zone
+  purgeGcodes: () =>
+    apiFetch<any>("/api/queue/gcodes/purge", { method: "POST" }),
 
   // Spoolman
   getSpoolmanHealth: () => apiFetch<any>("/api/spoolman/health"),

@@ -103,12 +103,14 @@ class Dispatcher:
             spool_material = None
             spool_color = None
             spool_remaining = None
+            spool_filament_id = None
             if printer.current_spool_id:
                 spool_info = await spoolman_client.get_spool_info(printer.current_spool_id)
                 if spool_info:
                     spool_material = spool_info.get("material", "").upper()
                     spool_color = spool_info.get("color_hex", "")
                     spool_remaining = spool_info.get("remaining_weight")
+                    spool_filament_id = (spool_info.get("filament") or {}).get("id")
 
             # Find matching pending jobs, ordered by priority DESC, then created_at ASC
             result = await session.execute(
@@ -129,7 +131,8 @@ class Dispatcher:
 
             for job in pending_jobs:
                 compatible, reason = self._is_compatible(
-                    job, printer, spool_material, spool_color, spool_remaining
+                    job, printer, spool_material, spool_color,
+                    spool_remaining, spool_filament_id,
                 )
                 if compatible:
                     success = await self._dispatch_job(session, job, printer)
@@ -151,6 +154,7 @@ class Dispatcher:
         spool_material: Optional[str],
         spool_color: Optional[str],
         spool_remaining: Optional[float],
+        spool_filament_id: Optional[int] = None,
     ) -> tuple[bool, str]:
         """
         Check if a job is compatible with a printer's current configuration.
@@ -179,29 +183,50 @@ class Dispatcher:
                 f"printer has {printer.nozzle_size}mm"
             )
 
-        # 3. Check material
-        if not spool_material:
-            return False, "No spool loaded on printer"
-            
-        if job.required_material:
-            if job.required_material.upper() != spool_material:
+        # 3. Filament match.
+        #    Preferred path: the job pins a specific Spoolman filament. The loaded
+        #    spool MUST be of exactly that filament — material and color then match
+        #    by definition. This is deterministic and avoids the fragile hex
+        #    comparison that silently passed when either side lacked a color.
+        if job.required_filament_id is not None:
+            if spool_filament_id is None:
+                return False, "No spool loaded (or spool has no Spoolman filament)"
+            if int(spool_filament_id) != int(job.required_filament_id):
                 return False, (
-                    f"Material mismatch: job requires '{job.required_material}', "
-                    f"spool has '{spool_material}'"
+                    f"Filament mismatch: job requires filament "
+                    f"#{job.required_filament_id}, spool has #{spool_filament_id}"
                 )
+        else:
+            # Legacy fallback for jobs created before filament-based matching:
+            # compare material + color directly.
+            if not spool_material:
+                return False, "No spool loaded on printer"
 
-        # 4. Check color (hex comparison, case-insensitive)
-        if job.required_color and spool_color:
-            # Normalize: strip '#' prefix and compare hex values
-            job_color = job.required_color.strip().lstrip("#").lower()
-            spool_color_clean = spool_color.strip().lstrip("#").lower()
-            if job_color != spool_color_clean:
-                return False, (
-                    f"Color mismatch: job requires '{job.required_color}', "
-                    f"spool has '{spool_color}'"
-                )
+            if job.required_material:
+                if job.required_material.upper() != spool_material:
+                    return False, (
+                        f"Material mismatch: job requires '{job.required_material}', "
+                        f"spool has '{spool_material}'"
+                    )
 
-        # 5. Check filament remaining weight
+            # Color check (hex, case-insensitive). If the job demands a color we
+            # must NOT pass when the spool color is unknown — that was the bug
+            # that let a cyan job print on a yellow spool.
+            if job.required_color:
+                if not spool_color:
+                    return False, (
+                        f"Color required ('{job.required_color}') but the loaded "
+                        f"spool has no color in Spoolman"
+                    )
+                job_color = job.required_color.strip().lstrip("#").lower()
+                spool_color_clean = spool_color.strip().lstrip("#").lower()
+                if job_color != spool_color_clean:
+                    return False, (
+                        f"Color mismatch: job requires '{job.required_color}', "
+                        f"spool has '{spool_color}'"
+                    )
+
+        # 4. Check filament remaining weight
         if (
             job.estimated_weight_g
             and spool_remaining is not None
@@ -253,6 +278,7 @@ class Dispatcher:
 
         # Update printer status
         printer.status = "printing"
+        printer.disconnected_while_printing = False
         printer.current_filename = gcode_name
         printer.current_job_progress = 0.0
         if thumbnail:

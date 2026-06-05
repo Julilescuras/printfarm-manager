@@ -11,6 +11,7 @@ class PrintJobCreate(BaseModel):
     required_nozzle: float = 0.4
     required_material: str = "PLA"
     required_color: Optional[str] = None
+    required_filament_id: Optional[int] = None
     copies: int = 1
     priority: int = 0
 
@@ -21,6 +22,7 @@ class PrintJobUpdate(BaseModel):
     required_nozzle: Optional[float] = None
     required_material: Optional[str] = None
     required_color: Optional[str] = None
+    required_filament_id: Optional[int] = None
     copies: Optional[int] = None
     priority: Optional[int] = None
 
@@ -34,6 +36,7 @@ class PrintJobResponse(BaseModel):
     required_nozzle: float
     required_material: str
     required_color: Optional[str]
+    required_filament_id: Optional[int] = None
     estimated_time_secs: Optional[int]
     estimated_weight_g: Optional[float]
     copies: int
