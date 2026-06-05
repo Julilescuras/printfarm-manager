@@ -124,30 +124,19 @@ echo -e "  ${GREEN}✓${NC} Servicios iniciados"
 echo -e "\n${CYAN}[7/7]${NC} Configurando vigilante de actualizaciones automáticas..."
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
-WATCHDOG_SCRIPT="/usr/local/bin/printfarm-watchdog.sh"
-
-cat > "$WATCHDOG_SCRIPT" << WATCHDOG_EOF
-#!/bin/bash
-# PrintFarm Manager — Update watchdog (ejecutado por cron cada minuto)
-# NO borra la banderita: de eso se encarga update.sh, y SOLO si tuvo éxito.
-# Así, si una actualización falla, la banderita persiste y se reintenta el
-# próximo minuto (update.sh tiene su propio lock anti-concurrencia).
-FLAG="${PROJECT_DIR}/backend/data/.update_requested"
-LOG="/var/log/printfarm-update.log"
-if [ -f "\$FLAG" ]; then
-    echo "\$(date): Actualización solicitada desde el frontend, ejecutando update.sh..." >> "\$LOG"
-    cd "${PROJECT_DIR}" && bash update.sh >> "\$LOG" 2>&1
-    echo "\$(date): update.sh finalizó con código \$?." >> "\$LOG"
-fi
-WATCHDOG_EOF
+# El watchdog ahora vive en el repo (watchdog.sh), así `git pull` lo mantiene al
+# día y el cron nunca queda apuntando a un script inexistente.
+WATCHDOG_SCRIPT="$PROJECT_DIR/watchdog.sh"
 
 chmod +x "$WATCHDOG_SCRIPT"
 
-# Add or replace the crontab entry (runs every minute)
-(crontab -l 2>/dev/null | grep -v "printfarm-watchdog"; echo "* * * * * $WATCHDOG_SCRIPT") | crontab -
+# Add or replace the crontab entry (runs every minute). Limpiamos cualquier
+# entrada vieja (la histórica en /usr/local/bin y rutas previas del repo) para
+# no duplicar ni dejar apuntando a un archivo que no existe.
+(crontab -l 2>/dev/null | grep -v "printfarm-watchdog" | grep -v "printfarm-manager/watchdog.sh"; echo "* * * * * $WATCHDOG_SCRIPT") | crontab -
 
 echo -e "  ${GREEN}✓${NC} Watchdog configurado en cron (cada minuto)"
-echo -e "  ${BLUE}ℹ${NC}  Log de actualizaciones: /var/log/printfarm-update.log"
+echo -e "  ${BLUE}ℹ${NC}  Log de actualizaciones: $PROJECT_DIR/backend/data/update.log"
 
 # ─── Summary ────────────────────────────────────────
 echo ""
