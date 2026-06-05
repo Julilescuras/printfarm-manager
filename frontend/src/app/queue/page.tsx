@@ -19,6 +19,9 @@ import {
   XCircle,
   History,
   Copy,
+  ChevronDown,
+  Check,
+  Search,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { PrintJob } from "@/lib/types";
@@ -31,7 +34,6 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: "Cancelado",
 };
 
-const MATERIALS = ["PLA", "PETG", "ABS", "TPU", "ASA", "Nylon"];
 const NOZZLES = [0.2, 0.4, 0.6, 0.8];
 
 function formatDuration(secs: number | null | undefined): string {
@@ -109,7 +111,7 @@ export default function QueuePage() {
   }, [fetchJobs]);
 
   const handleCancel = async (id: number) => {
-    if (!window.confirm("¿Seguro que querés cancelar este trabajo?")) return;
+    if (!window.confirm("¿Eliminar este trabajo de la cola? No queda registrado como cancelado.")) return;
     try {
       await api.cancelJob(id);
       fetchJobs();
@@ -533,7 +535,13 @@ function JobCard({
     cancelled: "bg-red-500/20 text-red-400 border-red-500/30",
   };
 
-  const filamentName = filaments.find((f) => `#${f.color_hex}` === job.required_color && f.material === job.required_material)?.name;
+  const filamentName = (
+    job.required_filament_id != null
+      ? filaments.find((f) => f.id === job.required_filament_id)
+      : filaments.find(
+          (f) => `#${f.color_hex}` === job.required_color && f.material === job.required_material
+        )
+  )?.name;
 
   return (
     <div className="glass-card p-4 flex items-center gap-4">
@@ -630,7 +638,7 @@ function JobCard({
           <button
             onClick={() => onCancel(job.id)}
             className="p-2 rounded-lg hover:bg-red-500/20 text-muted-foreground hover:text-red-400 transition-colors"
-            title="Cancelar"
+            title="Eliminar de la cola"
           >
             <Trash2 className="w-4 h-4" />
           </button>
@@ -645,6 +653,118 @@ function JobCard({
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── Filament Picker (searchable) ───
+// Replaces the old separate Material + Color selectors. The user picks ONE
+// Spoolman filament; material and color are derived from it. The job stores the
+// filament id, which is exactly what the dispatcher matches against.
+function filamentLabel(f: any): string {
+  const base = f?.name || f?.material || "Filamento";
+  const vendor = f?.vendor?.name;
+  return vendor ? `${base} · ${vendor}` : base;
+}
+
+function FilamentPicker({
+  filaments,
+  selectedId,
+  onSelect,
+}: {
+  filaments: any[];
+  selectedId: number | null;
+  onSelect: (filament: any | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  const selected = filaments.find((f) => f.id === selectedId) || null;
+
+  const filtered = filaments.filter((f) => {
+    const q = query.toLowerCase().trim();
+    if (!q) return true;
+    const hay = `${f.name || ""} ${f.material || ""} ${f.vendor?.name || ""}`.toLowerCase();
+    return hay.includes(q);
+  });
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary border border-border focus:border-primary outline-none text-sm text-left"
+      >
+        {selected ? (
+          <>
+            <span
+              className="w-4 h-4 rounded-full border border-white/20 shrink-0"
+              style={{ backgroundColor: selected.color_hex ? `#${selected.color_hex}` : "transparent" }}
+            />
+            <span className="flex-1 truncate">{filamentLabel(selected)}</span>
+          </>
+        ) : (
+          <span className="flex-1 text-muted-foreground">Selecciona un filamento…</span>
+        )}
+        <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
+      </button>
+
+      {open && (
+        <div className="absolute z-20 mt-1 w-full rounded-lg bg-card border border-border shadow-xl overflow-hidden">
+          <div className="p-2 border-b border-border bg-card">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                autoFocus
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Buscar por nombre, material o marca…"
+                className="w-full pl-8 pr-3 py-1.5 rounded-md bg-secondary border border-border focus:border-primary outline-none text-sm"
+              />
+            </div>
+          </div>
+          <div className="max-h-60 overflow-y-auto custom-scrollbar">
+            {filtered.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => {
+                  onSelect(f);
+                  setOpen(false);
+                  setQuery("");
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-secondary/60 transition-colors text-left"
+              >
+                <span
+                  className="w-4 h-4 rounded-full border border-white/20 shrink-0"
+                  style={{ backgroundColor: f.color_hex ? `#${f.color_hex}` : "transparent" }}
+                />
+                <span className="flex-1 truncate">
+                  {f.name || f.material}
+                  <span className="text-xs text-muted-foreground">
+                    {" · "}{f.material}{f.vendor?.name ? ` · ${f.vendor.name}` : ""}
+                  </span>
+                </span>
+                {f.id === selectedId && <Check className="w-4 h-4 text-primary shrink-0" />}
+              </button>
+            ))}
+            {filtered.length === 0 && (
+              <div className="p-4 text-sm text-muted-foreground text-center">
+                Sin resultados
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -665,6 +785,7 @@ function AddJobModal({
   const [nozzle, setNozzle] = useState(0.4);
   const [material, setMaterial] = useState("PLA");
   const [color, setColor] = useState("");
+  const [filamentId, setFilamentId] = useState<number | null>(null);
   const [copies, setCopies] = useState(1);
   const [priority, setPriority] = useState(0);
   const [file, setFile] = useState<File | null>(null);
@@ -672,12 +793,25 @@ function AddJobModal({
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Default to the first filament so the field is never empty.
   useEffect(() => {
-    if (filaments.length > 0 && !color) {
-      setColor(`#${filaments[0].color_hex}`);
-      setMaterial(filaments[0].material);
+    if (filaments.length > 0 && filamentId === null) {
+      const f = filaments[0];
+      setFilamentId(f.id);
+      setMaterial(f.material);
+      setColor(f.color_hex ? `#${f.color_hex}` : "");
     }
-  }, [filaments, color]);
+  }, [filaments, filamentId]);
+
+  const handleSelectFilament = (f: any | null) => {
+    if (f) {
+      setFilamentId(f.id);
+      setMaterial(f.material);
+      setColor(f.color_hex ? `#${f.color_hex}` : "");
+    } else {
+      setFilamentId(null);
+    }
+  };
 
   const toggleModel = (model: string) => {
     setSelectedModels((prev) =>
@@ -718,6 +852,7 @@ function AddJobModal({
       formData.append("required_nozzle", nozzle.toString());
       formData.append("required_material", material);
       if (color) formData.append("required_color", color);
+      if (filamentId != null) formData.append("required_filament_id", String(filamentId));
       formData.append("copies", copies.toString());
       formData.append("priority", priority.toString());
       formData.append("gcode", file);
@@ -826,8 +961,22 @@ function AddJobModal({
             </div>
           </div>
 
-          {/* Nozzle + Material row */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* Filament (single searchable selector — replaces Material + Color) */}
+          <div>
+            <label className="block text-sm font-medium mb-1.5">Filamento</label>
+            <FilamentPicker
+              filaments={filaments}
+              selectedId={filamentId}
+              onSelect={handleSelectFilament}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              El material y el color salen del filamento elegido. El despacho exige
+              exactamente este filamento cargado.
+            </p>
+          </div>
+
+          {/* Nozzle + Copies + Priority */}
+          <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="block text-sm font-medium mb-1.5">Boquilla</label>
               <select
@@ -841,49 +990,6 @@ function AddJobModal({
                   </option>
                 ))}
               </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1.5">Material</label>
-              <select
-                value={material}
-                onChange={(e) => setMaterial(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-secondary border border-border focus:border-primary outline-none text-sm"
-              >
-                {MATERIALS.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Color + Copies + Priority */}
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="block text-sm font-medium mb-1.5">Color (Spoolman)</label>
-              <div className="relative">
-                <select
-                  value={color}
-                  onChange={(e) => {
-                    setColor(e.target.value);
-                    const fil = filaments.find((f) => `#${f.color_hex}` === e.target.value);
-                    if (fil) setMaterial(fil.material);
-                  }}
-                  className="w-full pl-10 pr-3 py-2 rounded-lg bg-secondary border border-border focus:border-primary outline-none text-sm appearance-none"
-                >
-                  <option value="">Selecciona un color...</option>
-                  {filaments.map((f) => (
-                    <option key={f.id} value={`#${f.color_hex}`}>
-                      {f.name || f.material} - {f.vendor?.name || "N/A"}
-                    </option>
-                  ))}
-                </select>
-                <div 
-                  className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border border-white/20 pointer-events-none"
-                  style={{ backgroundColor: color || 'transparent' }}
-                />
-              </div>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1.5">Copias</label>
@@ -947,8 +1053,21 @@ function EditJobModal({
   const [nozzle, setNozzle] = useState(job.required_nozzle);
   const [material, setMaterial] = useState(job.required_material);
   const [color, setColor] = useState(job.required_color || "");
+  const [filamentId, setFilamentId] = useState<number | null>(
+    job.required_filament_id ?? null
+  );
   const [priority, setPriority] = useState(job.priority);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSelectFilament = (f: any | null) => {
+    if (f) {
+      setFilamentId(f.id);
+      setMaterial(f.material);
+      setColor(f.color_hex ? `#${f.color_hex}` : "");
+    } else {
+      setFilamentId(null);
+    }
+  };
 
   const toggleModel = (model: string) => {
     setSelectedModels((prev) =>
@@ -970,6 +1089,7 @@ function EditJobModal({
         required_nozzle: nozzle,
         required_material: material,
         required_color: color || null,
+        required_filament_id: filamentId,
         priority,
       });
       onUpdated();
@@ -1031,7 +1151,17 @@ function EditJobModal({
             </div>
           </div>
 
-          {/* Nozzle + Material row */}
+          {/* Filament (single searchable selector — replaces Material + Color) */}
+          <div>
+            <label className="block text-sm font-medium mb-1.5">Filamento</label>
+            <FilamentPicker
+              filaments={filaments}
+              selectedId={filamentId}
+              onSelect={handleSelectFilament}
+            />
+          </div>
+
+          {/* Nozzle + Priority */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium mb-1.5">Boquilla</label>
@@ -1046,49 +1176,6 @@ function EditJobModal({
                   </option>
                 ))}
               </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1.5">Material</label>
-              <select
-                value={material}
-                onChange={(e) => setMaterial(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-secondary border border-border focus:border-primary outline-none text-sm"
-              >
-                {MATERIALS.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Color + Priority */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium mb-1.5">Color (Spoolman)</label>
-              <div className="relative">
-                <select
-                  value={color}
-                  onChange={(e) => {
-                    setColor(e.target.value);
-                    const fil = filaments.find((f) => `#${f.color_hex}` === e.target.value);
-                    if (fil) setMaterial(fil.material);
-                  }}
-                  className="w-full pl-10 pr-3 py-2 rounded-lg bg-secondary border border-border focus:border-primary outline-none text-sm appearance-none"
-                >
-                  <option value="">Selecciona un color...</option>
-                  {filaments.map((f) => (
-                    <option key={f.id} value={`#${f.color_hex}`}>
-                      {f.name || f.material} - {f.vendor?.name || "N/A"}
-                    </option>
-                  ))}
-                </select>
-                <div
-                  className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border border-white/20 pointer-events-none"
-                  style={{ backgroundColor: color || 'transparent' }}
-                />
-              </div>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1.5">Prioridad</label>

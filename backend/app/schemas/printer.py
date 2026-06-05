@@ -49,6 +49,7 @@ class PrinterResponse(BaseModel):
     camera_url: Optional[str]
     current_spool_id: Optional[int]
     status: str
+    disconnected_while_printing: bool = False
     current_job_progress: float
     hotend_temp: float
     hotend_target: float

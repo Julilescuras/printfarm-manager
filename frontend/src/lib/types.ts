@@ -13,6 +13,7 @@ export interface PrinterState {
   fluidd_url: string | null;
   current_spool_id: number | null;
   status: PrinterStatus;
+  disconnected_while_printing: boolean;
   current_job_progress: number;
   hotend_temp: number;
   hotend_target: number;
@@ -46,6 +47,7 @@ export interface PrintJob {
   required_nozzle: number;
   required_material: string;
   required_color: string | null;
+  required_filament_id: number | null;
   estimated_time_secs: number | null;
   estimated_weight_g: number | null;
   copies: number;
