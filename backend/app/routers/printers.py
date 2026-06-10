@@ -192,8 +192,11 @@ async def clear_bed(printer_id: int, db: AsyncSession = Depends(get_db)):
     # Complete the current print job
     await dispatcher.on_print_complete(printer_id)
 
-    # Update printer to available
+    # Update printer to available. This is the ONE human-confirmed moment the bed
+    # is empty, so it's the only place (besides a manual set-to-available) that is
+    # allowed to clear the safety flag and re-enable auto-dispatch.
     printer.status = "available"
+    printer.bed_cleared = True
     printer.current_job_progress = 0.0
     printer.current_filename = None
     printer.thumbnail_url = None
@@ -318,8 +321,12 @@ async def set_printer_status(
     old_status = printer.status
     printer.status = data.status
 
-    # If setting to available, clear bed-related fields
+    # If setting to available, clear bed-related fields. Setting 'available' by
+    # hand is an explicit human statement that the bed is empty, so it's allowed
+    # to clear the safety flag. Any other manual status (paused, requires_clearance)
+    # leaves bed_cleared untouched.
     if data.status == "available":
+        printer.bed_cleared = True
         printer.current_job_progress = 0.0
         printer.current_filename = None
         printer.thumbnail_url = None

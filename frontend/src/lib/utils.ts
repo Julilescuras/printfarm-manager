@@ -39,12 +39,12 @@ export function getStatusInfo(status: string): {
         dotClass: "status-dot-printing",
         badgeClass: "bg-status-printing/20 text-status-printing border-status-printing/30",
       };
+    // 'standby' (idle reportado por Klipper) y 'available' (confirmado tras
+    // vaciar cama) se muestran como un único estado "Disponible": para el
+    // operador significan lo mismo (lista para el próximo trabajo). El backend
+    // garantiza que una impresora con pieza en la cama nunca esté en estos
+    // estados (cae a "Cama Ocupada"), así que esta unificación es honesta.
     case "standby":
-      return {
-        label: "En Espera",
-        dotClass: "status-dot-standby",
-        badgeClass: "bg-status-standby/20 text-status-standby border-status-standby/30",
-      };
     case "available":
       return {
         label: "Disponible",

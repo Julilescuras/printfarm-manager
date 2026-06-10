@@ -254,6 +254,11 @@ class MoonrakerClient:
 
                 if new_state == "printing":
                     updates["status"] = "printing"
+                    # A print is running → the bed is in use. Mark it not-cleared
+                    # so it can never be auto-dispatched again until a human clears
+                    # it. Covers prints started from Fluidd/Mainsail too, not just
+                    # our dispatcher.
+                    updates["bed_cleared"] = False
                     if self._last_state not in ("printing", "paused"):
                         # New print started — reset ETA trackers
                         self._last_print_duration = 0.0
@@ -314,9 +319,20 @@ class MoonrakerClient:
                 elif new_state == "standby":
                     # Only set standby if we weren't in a manual/clearance state
                     if old_state != "complete":
-                        # Check DB for manual states we should preserve
-                        current_db_status = await self._get_current_db_status()
-                        if current_db_status not in ("paused", "available", "requires_clearance"):
+                        current_db_status, bed_cleared = await self._get_current_db_state()
+                        if current_db_status in ("paused", "available", "requires_clearance"):
+                            pass  # preserve manual / clearance states
+                        elif current_db_status == "printing" or not bed_cleared:
+                            # Either we thought it was printing but Klipper now
+                            # reports standby WITHOUT us ever seeing 'complete'
+                            # (lost event — backend restarted mid-print, or the WS
+                            # dropped at completion), OR the bed was never cleared
+                            # after a prior print/error. Klipper idle + a part on
+                            # the bed → requires clearance, NEVER idle. This is the
+                            # exact case that used to let the next job print on top,
+                            # and it keeps the invariant that standby ⟺ bed is clear.
+                            updates["status"] = "requires_clearance"
+                        else:
                             updates["status"] = "standby"
                 elif new_state == "error":
                     # Flush any remaining filament
@@ -463,6 +479,17 @@ class MoonrakerClient:
             printer = result.scalar_one_or_none()
             return printer.status if printer else "offline"
 
+    async def _get_current_db_state(self) -> tuple[str, bool]:
+        """Get (status, bed_cleared) from the database in one read."""
+        async with async_session() as session:
+            result = await session.execute(
+                select(Printer).where(Printer.id == self.printer_id)
+            )
+            printer = result.scalar_one_or_none()
+            if printer:
+                return printer.status, printer.bed_cleared
+            return "offline", True
+
     async def _set_online_status(self):
         """Set the printer online, but respect states that must survive reconnects.
 
@@ -471,7 +498,7 @@ class MoonrakerClient:
         silently downgrade the printer to 'standby', and the dispatcher would
         start the next queued job ON TOP of the finished print still on the bed.
         """
-        current_status = await self._get_current_db_status()
+        current_status, bed_cleared = await self._get_current_db_state()
         # 'printing' is preserved too: a printer that was printing and merely
         # reconnected is still printing. Downgrading it to standby (even for the
         # ~1s until the subscribe response arrives) could let the reconciler
@@ -479,7 +506,11 @@ class MoonrakerClient:
         if current_status in ("paused", "available", "requires_clearance", "printing"):
             logger.info(f"[Printer {self.printer_id}] Connected but keeping protected status: {current_status}")
             return
-        await self._update_printer_db(status="standby")
+        # status is standby/offline/error. If the bed was never cleared there may
+        # be a part on it (e.g. an error/power loss mid-print) → require clearance
+        # instead of becoming idle/dispatchable. Keeps the invariant standby ⟺ bed clear.
+        new_status = "standby" if bed_cleared else "requires_clearance"
+        await self._update_printer_db(status=new_status)
 
     # --- Telegram notification helpers ---
 
