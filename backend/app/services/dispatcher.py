@@ -108,6 +108,18 @@ class Dispatcher:
                 logger.debug(f"Printer {printer_id} is not available (status={printer.status})")
                 return False
 
+            # HARD SAFETY GUARANTEE. Never start a print on a bed that hasn't been
+            # confirmed empty by a human. This is intentionally independent of the
+            # volatile `status` string: even if a bug, reconnect, power loss or
+            # backend restart wrongly downgrades a finished printer to 'standby',
+            # bed_cleared stays False and we refuse to overprint the finished part.
+            if not printer.bed_cleared:
+                logger.warning(
+                    f"Printer {printer_id} ({printer.name}) is '{printer.status}' but "
+                    f"bed_cleared=False — refusing to dispatch until bed is cleared manually"
+                )
+                return False
+
             # Get the loaded spool info from Spoolman
             spool_material = None
             spool_color = None
@@ -286,6 +298,9 @@ class Dispatcher:
         # from the stored file (see /api/printers/{id}/thumbnail), so there's no
         # need to fetch a thumbnail URL from Moonraker here.
         printer.status = "printing"
+        # Bed now has (or is about to have) a part on it. Stays False until a
+        # human clears the bed — this is what blocks an automatic reprint.
+        printer.bed_cleared = False
         printer.disconnected_while_printing = False
         printer.current_filename = gcode_name
         printer.current_job_progress = 0.0
@@ -504,7 +519,10 @@ class Dispatcher:
         async with async_session() as session:
             result = await session.execute(
                 select(Printer).where(
-                    Printer.status.in_(["available", "standby"])
+                    and_(
+                        Printer.status.in_(["available", "standby"]),
+                        Printer.bed_cleared.is_(True),
+                    )
                 )
             )
             idle_printers = result.scalars().all()

@@ -14,6 +14,9 @@ export interface PrinterState {
   current_spool_id: number | null;
   status: PrinterStatus;
   disconnected_while_printing: boolean;
+  // Safety flag: true only when a human confirmed the bed is empty. The backend
+  // refuses to auto-dispatch a job while this is false, even if the status looks idle.
+  bed_cleared: boolean;
   current_job_progress: number;
   hotend_temp: number;
   hotend_target: number;

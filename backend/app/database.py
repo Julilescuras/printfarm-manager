@@ -68,6 +68,7 @@ async def init_db():
             ("printers", "lifetime_print_seconds", "INTEGER NOT NULL DEFAULT 0"),
             ("printers", "maint_credited_secs", "INTEGER NOT NULL DEFAULT 0"),
             ("printers", "filament_tracking_mode", "VARCHAR(20) NOT NULL DEFAULT 'manager'"),
+            ("printers", "bed_cleared", "INTEGER NOT NULL DEFAULT 1"),
             ("maintenance_records", "custom_label", "VARCHAR(100)"),
             ("maintenance_records", "custom_icon", "VARCHAR(20)"),
             ("maintenance_records", "custom_description", "VARCHAR(300)"),
@@ -80,6 +81,12 @@ async def init_db():
             # print credited again the first time the monitor loop runs.
             ("printers", "maint_credited_secs"):
                 "UPDATE printers SET maint_credited_secs = total_print_time_secs",
+            # Any printer that isn't a clean idle state at migration time may have
+            # a piece on the bed — default it to NOT cleared so the dispatcher
+            # won't overprint until a human clears it.
+            ("printers", "bed_cleared"):
+                "UPDATE printers SET bed_cleared = 0 "
+                "WHERE status IN ('printing','paused','requires_clearance','error')",
         }
 
         for table, column, col_type in migrations:
