@@ -43,6 +43,14 @@ class Printer(Base):
     # frozen 'printing' card. Cleared automatically once the printer reports a
     # live state again.
     disconnected_while_printing: Mapped[bool] = mapped_column(Boolean, default=False)
+    # CRITICAL SAFETY FLAG. True only means a human confirmed the bed is empty
+    # (via "Vaciar Cama" or by manually setting the printer to 'available').
+    # It flips to False the instant ANY print starts and STAYS False through
+    # completion, cancellation, error, power loss or backend restart. The
+    # dispatcher refuses to start a job unless this is True — this is the hard
+    # guarantee that a finished print is never overprinted without a human
+    # clearing the bed, independent of how the volatile `status` string evolves.
+    bed_cleared: Mapped[bool] = mapped_column(Boolean, default=True)
     current_job_progress: Mapped[float] = mapped_column(Float, default=0.0)
     hotend_temp: Mapped[float] = mapped_column(Float, default=0.0)
     hotend_target: Mapped[float] = mapped_column(Float, default=0.0)
@@ -82,6 +90,7 @@ class Printer(Base):
             "fluidd_url": self.fluidd_url,
             "status": self.status,
             "disconnected_while_printing": self.disconnected_while_printing,
+            "bed_cleared": self.bed_cleared,
             "current_job_progress": self.current_job_progress,
             "hotend_temp": self.hotend_temp,
             "hotend_target": self.hotend_target,

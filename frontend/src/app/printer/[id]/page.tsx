@@ -104,7 +104,8 @@ export default function PrinterDetailsPage() {
     requires_clearance: "text-purple-400 bg-purple-500/20 border-purple-500/30",
     error: "text-red-400 bg-red-500/20 border-red-500/30",
     offline: "text-gray-400 bg-gray-500/20 border-gray-500/30",
-    standby: "text-emerald-400 bg-emerald-500/20 border-emerald-500/30",
+    // 'standby' se unifica visualmente con 'available' (ver getStatusInfo).
+    standby: "text-green-400 bg-green-500/20 border-green-500/30",
   };
 
   return (
@@ -211,7 +212,7 @@ export default function PrinterDetailsPage() {
                 <div className="grid gap-2">
                   <button
                     onClick={() => handleSetStatus("available")}
-                    disabled={isSettingStatus || printer.status === "available"}
+                    disabled={isSettingStatus || printer.status === "available" || printer.status === "standby"}
                     className={`py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
                       printer.status === "available" || printer.status === "standby"
                         ? "bg-green-500/20 text-green-400 border border-green-500/30"
