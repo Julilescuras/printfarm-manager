@@ -17,6 +17,9 @@ import {
   Sparkles,
   KeyRound,
   Cpu,
+  Lock,
+  Users,
+  Zap,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { AppearancePanel } from "@/components/settings/appearance-panel";
@@ -40,6 +43,10 @@ export default function SettingsPage() {
   const [assistantProvider, setAssistantProvider] = useState("gemini");
   const [assistantApiKey, setAssistantApiKey] = useState("");
   const [assistantModel, setAssistantModel] = useState("");
+  const [assistantActionsEnabled, setAssistantActionsEnabled] = useState(false);
+  const [assistantRequirePin, setAssistantRequirePin] = useState(true);
+  const [assistantActionPin, setAssistantActionPin] = useState("");
+  const [assistantAuthorizedIds, setAssistantAuthorizedIds] = useState("");
   const [providers, setProviders] = useState<
     { id: string; label: string; default_model: string; paid: boolean }[]
   >([]);
@@ -77,6 +84,10 @@ export default function SettingsPage() {
       setAssistantProvider(data.assistant_provider || "gemini");
       setAssistantApiKey(data.assistant_api_key || "");
       setAssistantModel(data.assistant_model || "");
+      setAssistantActionsEnabled(data.assistant_actions_enabled === "true");
+      setAssistantRequirePin(data.assistant_require_pin !== "false");
+      setAssistantActionPin(data.assistant_action_pin || "");
+      setAssistantAuthorizedIds(data.assistant_authorized_user_ids || "");
     } catch (err) {
       console.error("Error loading settings:", err);
     } finally {
@@ -98,6 +109,10 @@ export default function SettingsPage() {
         assistant_provider: assistantProvider,
         assistant_api_key: assistantApiKey,
         assistant_model: assistantModel,
+        assistant_actions_enabled: assistantActionsEnabled ? "true" : "false",
+        assistant_require_pin: assistantRequirePin ? "true" : "false",
+        assistant_action_pin: assistantActionPin,
+        assistant_authorized_user_ids: assistantAuthorizedIds,
       });
       setSaveStatus("success");
       setTimeout(() => setSaveStatus("idle"), 3000);
@@ -693,6 +708,109 @@ export default function SettingsPage() {
           </div>
         )}
 
+        {/* Actions (advanced) */}
+        <div className="pt-2 border-t border-border space-y-5">
+          <h3 className="text-sm font-semibold flex items-center gap-2 text-amber-400">
+            <Zap className="w-4 h-4" />
+            Acciones por chat (pausar, despachar, precalentar…)
+          </h3>
+
+          {/* Enable actions */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">Habilitar acciones</p>
+              <p className="text-sm text-muted-foreground">
+                Permite que el bot ejecute acciones sobre las impresoras, no solo consultar.
+              </p>
+            </div>
+            <button
+              onClick={() => setAssistantActionsEnabled(!assistantActionsEnabled)}
+              className="relative w-14 min-w-[3.5rem] h-7 rounded-full transition-colors duration-300 focus:outline-none shrink-0"
+              style={{ backgroundColor: assistantActionsEnabled ? "hsl(var(--primary))" : "hsl(var(--muted))" }}
+            >
+              <span
+                className="absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-md transition-transform duration-300"
+                style={{ transform: assistantActionsEnabled ? "translateX(28px)" : "translateX(0px)" }}
+              />
+            </button>
+          </div>
+
+          {assistantActionsEnabled && (
+            <>
+              {/* Authorized users */}
+              <div>
+                <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
+                  <Users className="w-4 h-4" />
+                  Usuarios autorizados (IDs de Telegram)
+                </label>
+                <input
+                  type="text"
+                  value={assistantAuthorizedIds}
+                  onChange={(e) => setAssistantAuthorizedIds(e.target.value)}
+                  placeholder="123456789, 987654321"
+                  className="w-full px-3 py-2 rounded-lg bg-secondary border border-border focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all text-sm font-mono"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Separá los IDs con comas. Solo estos usuarios pueden accionar. Para saber tu
+                  ID, escribile <code className="bg-secondary px-1 rounded">/id</code> al bot.
+                </p>
+              </div>
+
+              {/* Require PIN toggle */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">Requerir contraseña de acción</p>
+                  <p className="text-sm text-muted-foreground">
+                    {assistantRequirePin
+                      ? "Además de estar autorizado, hay que decir la contraseña en el mensaje/audio (vale unos minutos, como una sesión)."
+                      : "Con estar autorizado alcanza; no se pide contraseña."}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setAssistantRequirePin(!assistantRequirePin)}
+                  className="relative w-14 min-w-[3.5rem] h-7 rounded-full transition-colors duration-300 focus:outline-none shrink-0"
+                  style={{ backgroundColor: assistantRequirePin ? "hsl(var(--primary))" : "hsl(var(--muted))" }}
+                >
+                  <span
+                    className="absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-md transition-transform duration-300"
+                    style={{ transform: assistantRequirePin ? "translateX(28px)" : "translateX(0px)" }}
+                  />
+                </button>
+              </div>
+
+              {/* PIN */}
+              {assistantRequirePin && (
+                <div>
+                  <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
+                    <Lock className="w-4 h-4" />
+                    Contraseña de acción
+                  </label>
+                  <input
+                    type="text"
+                    value={assistantActionPin}
+                    onChange={(e) => setAssistantActionPin(e.target.value)}
+                    placeholder="ej. 1752"
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-border focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all text-sm font-mono"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    La decís dentro del mensaje, ej.: «poné a calentar la i4 para PLA, clave 1752».
+                    El bot la borra del texto y siempre te pide confirmar antes de ejecutar.
+                  </p>
+                </div>
+              )}
+
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors disabled:opacity-50"
+              >
+                {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                {saveStatus === "success" ? "¡Guardado!" : "Guardar"}
+              </button>
+            </>
+          )}
+        </div>
+
         {/* Instructions */}
         <div className="p-4 rounded-lg bg-secondary/50 border border-border space-y-3">
           <h3 className="text-sm font-semibold flex items-center gap-2">
@@ -738,6 +856,16 @@ export default function SettingsPage() {
               mode activo el bot no recibe los mensajes normales del grupo. Después de
               cambiarlo, <strong>sacá y volvé a agregar el bot al grupo</strong> para que
               tome efecto.
+            </li>
+            <li>
+              <strong>🎙️ Audios:</strong> podés mandarle una nota de voz y la transcribe
+              (funciona con Groq u OpenAI como motor). Ej.: «poné a calentar la i4 para PLA».
+            </li>
+            <li>
+              <strong>⚡ Acciones:</strong> con «Habilitar acciones» activado, los usuarios
+              autorizados pueden pedir vaciar cama, despachar, pausar/reanudar, precalentar,
+              enfriar, cancelar o reiniciar firmware. El bot <strong>siempre repregunta</strong>{" "}
+              antes de ejecutar.
             </li>
           </ul>
         </div>

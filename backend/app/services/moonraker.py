@@ -606,6 +606,73 @@ class MoonrakerClient:
             logger.error(f"[Printer {self.printer_id}] Cancel print error: {e}")
             return False
 
+    async def pause_print(self) -> bool:
+        """Pause the currently running print via Moonraker."""
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(f"{self.base_url}/printer/print/pause")
+                if response.status_code == 200:
+                    logger.info(f"[Printer {self.printer_id}] Print paused")
+                    return True
+                logger.error(
+                    f"[Printer {self.printer_id}] Pause failed: {response.status_code} {response.text}"
+                )
+                return False
+        except Exception as e:
+            logger.error(f"[Printer {self.printer_id}] Pause print error: {e}")
+            return False
+
+    async def resume_print(self) -> bool:
+        """Resume a paused print via Moonraker."""
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(f"{self.base_url}/printer/print/resume")
+                if response.status_code == 200:
+                    logger.info(f"[Printer {self.printer_id}] Print resumed")
+                    return True
+                logger.error(
+                    f"[Printer {self.printer_id}] Resume failed: {response.status_code} {response.text}"
+                )
+                return False
+        except Exception as e:
+            logger.error(f"[Printer {self.printer_id}] Resume print error: {e}")
+            return False
+
+    async def run_gcode(self, script: str) -> bool:
+        """Run an arbitrary G-code script via Moonraker (used for preheat/cooldown)."""
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/printer/gcode/script",
+                    params={"script": script},
+                )
+                if response.status_code == 200:
+                    logger.info(f"[Printer {self.printer_id}] G-code ran: {script}")
+                    return True
+                logger.error(
+                    f"[Printer {self.printer_id}] G-code failed: {response.status_code} {response.text}"
+                )
+                return False
+        except Exception as e:
+            logger.error(f"[Printer {self.printer_id}] G-code error: {e}")
+            return False
+
+    async def firmware_restart(self) -> bool:
+        """Issue a Klipper FIRMWARE_RESTART to recover from an error state."""
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(f"{self.base_url}/printer/firmware_restart")
+                if response.status_code == 200:
+                    logger.info(f"[Printer {self.printer_id}] Firmware restart issued")
+                    return True
+                logger.error(
+                    f"[Printer {self.printer_id}] Firmware restart failed: {response.status_code} {response.text}"
+                )
+                return False
+        except Exception as e:
+            logger.error(f"[Printer {self.printer_id}] Firmware restart error: {e}")
+            return False
+
     async def get_thumbnail_url(self, filename: str) -> Optional[str]:
         """Fetch the thumbnail URL for a G-code file from Moonraker metadata."""
         try:
