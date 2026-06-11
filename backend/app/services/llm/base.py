@@ -75,3 +75,10 @@ class LLMProvider(ABC):
     ) -> LLMResponse:
         """Send the conversation (and available tools) and return one reply."""
         raise NotImplementedError
+
+    async def transcribe(self, audio: bytes, filename: str, mime: str = "audio/ogg") -> str:
+        """Transcribe an audio clip to text. Not every provider supports it."""
+        raise LLMProviderError(
+            f"El motor '{self.name}' no soporta transcripción de audio. "
+            f"Usá Groq u OpenAI para mensajes de voz."
+        )

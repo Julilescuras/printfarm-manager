@@ -2,10 +2,10 @@
 Telegram listener — the transport layer.
 
 Listens to the group via long-polling getUpdates (no public URL / webhook, so the
-server is never exposed to the internet). When a message addresses the bot, it
-passes the text to the agent and replies. Runs as a background task started in
-the app lifespan; it reads its config from app_settings on every cycle so the
-assistant can be enabled/disabled from the UI without a restart.
+server is never exposed to the internet). Handles text AND voice notes (audio is
+transcribed with the configured provider's Whisper). Builds an Actor (who is
+asking + whether they may run actions) and passes it, plus a short conversation
+history, to the agent. Permissions are enforced here in code, never by the model.
 """
 
 import asyncio
@@ -18,6 +18,9 @@ from sqlalchemy import select
 from app.database import async_session
 from app.models.settings import AppSettings
 from app.services.assistant.agent import assistant
+from app.services.assistant.conversation import Actor, conversation_store
+from app.services.llm.base import LLMProviderError
+from app.services.llm.factory import get_provider
 
 logger = logging.getLogger("printfarm.assistant")
 
@@ -29,6 +32,16 @@ TRIGGER_COMMANDS = ("/pregunta", "/ask", "/pf", "/bot")
 
 LONG_POLL_SECS = 25
 IDLE_RETRY_SECS = 10
+
+
+def _parse_ids(raw: str) -> set[int]:
+    """Parse a CSV of Telegram user IDs into a set of ints."""
+    out: set[int] = set()
+    for piece in (raw or "").replace(";", ",").split(","):
+        piece = piece.strip()
+        if piece.lstrip("-").isdigit():
+            out.add(int(piece))
+    return out
 
 
 class TelegramListener:
@@ -59,34 +72,40 @@ class TelegramListener:
         logger.info("Telegram assistant listener stopped")
 
     # ── config ──────────────────────────────────────────────────────────────
-    async def _get_config(self) -> tuple[Optional[str], Optional[str], bool, bool]:
+    async def _get_config(self) -> dict:
         async with async_session() as session:
             rows = (await session.execute(select(AppSettings))).scalars().all()
         cfg = {s.key: s.value for s in rows}
-        bot_token = cfg.get("telegram_bot_token", "") or None
-        chat_id = cfg.get("telegram_chat_id", "") or None
-        enabled = cfg.get("assistant_enabled", "false").lower() == "true"
-        reply_all = cfg.get("assistant_reply_all", "false").lower() == "true"
-        return bot_token, chat_id, enabled, reply_all
+        return {
+            "bot_token": cfg.get("telegram_bot_token", "") or None,
+            "chat_id": cfg.get("telegram_chat_id", "") or None,
+            "enabled": cfg.get("assistant_enabled", "false").lower() == "true",
+            "reply_all": cfg.get("assistant_reply_all", "false").lower() == "true",
+            "actions_enabled": cfg.get("assistant_actions_enabled", "false").lower() == "true",
+            "require_pin": cfg.get("assistant_require_pin", "true").lower() == "true",
+            "action_pin": cfg.get("assistant_action_pin", "") or "",
+            "authorized_ids": _parse_ids(cfg.get("assistant_authorized_user_ids", "")),
+        }
 
     # ── main loop ───────────────────────────────────────────────────────────
     async def _run(self) -> None:
         while self._running:
             try:
-                bot_token, chat_id, enabled, reply_all = await self._get_config()
-                if not enabled or not bot_token:
+                cfg = await self._get_config()
+                if not cfg["enabled"] or not cfg["bot_token"]:
                     await asyncio.sleep(IDLE_RETRY_SECS)
                     continue
 
+                token = cfg["bot_token"]
                 if self._bot_username is None:
-                    await self._fetch_bot_username(bot_token)
+                    await self._fetch_bot_username(token)
                 if not self._drained:
-                    await self._drain_backlog(bot_token)
+                    await self._drain_backlog(token)
 
-                updates = await self._get_updates(bot_token)
+                updates = await self._get_updates(token)
                 for update in updates:
                     self._offset = update["update_id"] + 1
-                    await self._handle_update(update, bot_token, chat_id, reply_all)
+                    await self._handle_update(update, cfg)
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001 — never let the loop die
@@ -130,25 +149,50 @@ class TelegramListener:
             params["reply_to_message_id"] = reply_to
         await self._api(token, "sendMessage", params)
 
-    # ── message handling ────────────────────────────────────────────────────
-    def _extract_question(self, text: str, message: dict, reply_all: bool = False) -> Optional[str]:
-        """Return the question if this message addresses the bot, else None.
+    # ── audio ────────────────────────────────────────────────────────────────
+    def _is_reply_to_bot(self, message: dict) -> bool:
+        reply = message.get("reply_to_message") or {}
+        return bool(self._bot_username) and reply.get("from", {}).get("username") == self._bot_username
 
-        By default the bot only answers when explicitly addressed (command,
-        @mention, or a reply to it) so it doesn't burn the LLM on every group
-        message. When `reply_all` is on, any normal message is treated as a
-        question (slash-commands meant for other bots are still ignored).
-        """
+    async def _transcribe_voice(self, token: str, message: dict) -> Optional[str]:
+        """Download a voice/audio message and transcribe it via the provider."""
+        obj = message.get("voice") or message.get("audio")
+        if not obj:
+            return None
+        data = await self._api(token, "getFile", {"file_id": obj.get("file_id")})
+        if not data or not data.get("ok"):
+            return None
+        file_path = data["result"].get("file_path", "")
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                r = await client.get(f"{TELEGRAM_API}/file/bot{token}/{file_path}")
+            if r.status_code != 200:
+                return None
+            audio = r.content
+        except httpx.HTTPError as exc:
+            logger.warning("Voice download failed: %s", exc)
+            return None
+
+        ext = file_path.rsplit(".", 1)[-1].lower() if "." in file_path else "ogg"
+        if ext == "oga":
+            ext = "ogg"
+        try:
+            provider = await get_provider()
+            return await provider.transcribe(audio, f"audio.{ext}", f"audio/{ext}")
+        except LLMProviderError as exc:
+            logger.warning("Transcription failed: %s", exc)
+            return None
+
+    # ── message handling ────────────────────────────────────────────────────
+    def _extract_question(self, text: str, message: dict, reply_all: bool) -> Optional[str]:
+        """Return the question if this text addresses the bot, else None."""
         stripped = text.strip()
 
-        # Reply to one of the bot's own messages → treat whole text as question.
-        reply = message.get("reply_to_message") or {}
-        if reply.get("from", {}).get("username") == self._bot_username and self._bot_username:
+        if self._is_reply_to_bot(message):
             return stripped or None
 
         lowered = stripped.lower()
         for cmd in TRIGGER_COMMANDS:
-            # supports "/ask question" and "/ask@BotName question"
             if lowered.startswith(cmd):
                 rest = stripped[len(cmd):]
                 if rest[:1] == "@" and self._bot_username:
@@ -160,7 +204,6 @@ class TelegramListener:
             if mention.lower() in lowered:
                 return stripped.replace(mention, "").strip() or None
 
-        # Reply-all: answer plain messages, but never hijack other bots' commands.
         if reply_all:
             if stripped.startswith("/"):
                 return None
@@ -168,45 +211,98 @@ class TelegramListener:
 
         return None
 
-    async def _handle_update(
-        self, update: dict, token: str, chat_id: Optional[str], reply_all: bool = False
-    ) -> None:
+    async def _handle_update(self, update: dict, cfg: dict) -> None:
+        token = cfg["bot_token"]
+        chat_id = cfg["chat_id"]
         message = update.get("message")
         if not message:
             return
         # Never react to messages from bots (including our OWN notifications).
-        # This is what keeps reply-all mode from looping on itself.
         if message.get("from", {}).get("is_bot"):
-            return
-        text = message.get("text")
-        if not text:
             return
 
         chat = message.get("chat", {})
-        # If a group is configured, only answer there. Otherwise answer anywhere
-        # (handy for testing in a private chat with the bot).
-        if chat_id and str(chat.get("id")) != str(chat_id):
+        chat_key = chat.get("id")
+        # If a group is configured, only answer there.
+        if chat_id and str(chat_key) != str(chat_id):
             return
 
-        # Reply-all only kicks in when a specific group is configured, so the bot
-        # never blindly answers everything in an unknown chat.
-        effective_reply_all = reply_all and bool(chat_id)
-        question = self._extract_question(text, message, effective_reply_all)
-        if question is None:
-            return
-        if not question:
+        from_user = message.get("from", {})
+        user_id = from_user.get("id")
+        name = from_user.get("first_name") or from_user.get("username") or "Operador"
+        text = message.get("text")
+
+        # /id — let users discover their Telegram ID to configure permissions.
+        if text and text.strip().lower().split("@")[0] == "/id":
             await self._send(
-                token, chat.get("id"),
-                "Preguntame algo, por ejemplo: «¿qué impresoras están andando?» 🖨️",
+                token, chat_key,
+                f"🪪 Tu ID de Telegram es: {user_id}\nNombre: {name}",
                 reply_to=message.get("message_id"),
             )
             return
 
-        await self._api(token, "sendChatAction", {"chat_id": chat.get("id"), "action": "typing"})
+        effective_reply_all = cfg["reply_all"] and bool(chat_id)
 
-        # Phase 1: read-only. allow_actions stays False until the actions phase.
-        answer = await assistant.ask(question, allow_actions=False)
-        await self._send(token, chat.get("id"), answer, reply_to=message.get("message_id"))
+        # Resolve the question, from text or from a voice note.
+        if text:
+            question_raw = self._extract_question(text, message, effective_reply_all)
+            if question_raw is None:
+                return
+            if not question_raw:
+                await self._send(
+                    token, chat_key,
+                    "Preguntame algo, por ejemplo: «¿qué impresoras están andando?» 🖨️",
+                    reply_to=message.get("message_id"),
+                )
+                return
+        elif message.get("voice") or message.get("audio"):
+            if not (effective_reply_all or self._is_reply_to_bot(message)):
+                return
+            await self._api(token, "sendChatAction", {"chat_id": chat_key, "action": "typing"})
+            question_raw = await self._transcribe_voice(token, message)
+            if not question_raw:
+                await self._send(
+                    token, chat_key,
+                    "🎙️ No pude entender el audio. Probá de nuevo o escribilo.",
+                    reply_to=message.get("message_id"),
+                )
+                return
+        else:
+            return
+
+        # ── permission / PIN resolution (in code, never trusting the model) ──
+        question = question_raw
+        action_pin = cfg["action_pin"]
+        if action_pin and action_pin in question:
+            conversation_store.unlock_actions(chat_key, user_id)
+            # Strip the PIN so it never reaches the model, logs, or history.
+            question = question.replace(action_pin, "").strip()
+
+        is_authorized = user_id in cfg["authorized_ids"]
+        if not cfg["actions_enabled"]:
+            actions_unlocked = False
+        elif not cfg["require_pin"]:
+            actions_unlocked = is_authorized
+        else:
+            actions_unlocked = is_authorized and conversation_store.actions_unlocked(chat_key, user_id)
+        actor = Actor(
+            user_id=user_id, name=name,
+            is_authorized=is_authorized, actions_unlocked=actions_unlocked,
+        )
+
+        if not question:
+            return
+
+        await self._api(token, "sendChatAction", {"chat_id": chat_key, "action": "typing"})
+
+        history = conversation_store.history(chat_key)
+        answer = await assistant.ask(question, actor=actor, history=history)
+
+        # Record the turn so follow-ups and confirmations have context.
+        conversation_store.add(chat_key, "user", f"{name}: {question}")
+        conversation_store.add(chat_key, "assistant", answer)
+
+        await self._send(token, chat_key, answer, reply_to=message.get("message_id"))
 
 
 # Singleton
