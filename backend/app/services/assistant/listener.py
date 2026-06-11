@@ -59,20 +59,21 @@ class TelegramListener:
         logger.info("Telegram assistant listener stopped")
 
     # ── config ──────────────────────────────────────────────────────────────
-    async def _get_config(self) -> tuple[Optional[str], Optional[str], bool]:
+    async def _get_config(self) -> tuple[Optional[str], Optional[str], bool, bool]:
         async with async_session() as session:
             rows = (await session.execute(select(AppSettings))).scalars().all()
         cfg = {s.key: s.value for s in rows}
         bot_token = cfg.get("telegram_bot_token", "") or None
         chat_id = cfg.get("telegram_chat_id", "") or None
         enabled = cfg.get("assistant_enabled", "false").lower() == "true"
-        return bot_token, chat_id, enabled
+        reply_all = cfg.get("assistant_reply_all", "false").lower() == "true"
+        return bot_token, chat_id, enabled, reply_all
 
     # ── main loop ───────────────────────────────────────────────────────────
     async def _run(self) -> None:
         while self._running:
             try:
-                bot_token, chat_id, enabled = await self._get_config()
+                bot_token, chat_id, enabled, reply_all = await self._get_config()
                 if not enabled or not bot_token:
                     await asyncio.sleep(IDLE_RETRY_SECS)
                     continue
@@ -85,7 +86,7 @@ class TelegramListener:
                 updates = await self._get_updates(bot_token)
                 for update in updates:
                     self._offset = update["update_id"] + 1
-                    await self._handle_update(update, bot_token, chat_id)
+                    await self._handle_update(update, bot_token, chat_id, reply_all)
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001 — never let the loop die
@@ -130,11 +131,13 @@ class TelegramListener:
         await self._api(token, "sendMessage", params)
 
     # ── message handling ────────────────────────────────────────────────────
-    def _extract_question(self, text: str, message: dict) -> Optional[str]:
+    def _extract_question(self, text: str, message: dict, reply_all: bool = False) -> Optional[str]:
         """Return the question if this message addresses the bot, else None.
 
-        The bot only answers when explicitly addressed (command, @mention, or a
-        reply to the bot) so it doesn't burn the LLM on every group message.
+        By default the bot only answers when explicitly addressed (command,
+        @mention, or a reply to it) so it doesn't burn the LLM on every group
+        message. When `reply_all` is on, any normal message is treated as a
+        question (slash-commands meant for other bots are still ignored).
         """
         stripped = text.strip()
 
@@ -157,11 +160,23 @@ class TelegramListener:
             if mention.lower() in lowered:
                 return stripped.replace(mention, "").strip() or None
 
+        # Reply-all: answer plain messages, but never hijack other bots' commands.
+        if reply_all:
+            if stripped.startswith("/"):
+                return None
+            return stripped or None
+
         return None
 
-    async def _handle_update(self, update: dict, token: str, chat_id: Optional[str]) -> None:
+    async def _handle_update(
+        self, update: dict, token: str, chat_id: Optional[str], reply_all: bool = False
+    ) -> None:
         message = update.get("message")
         if not message:
+            return
+        # Never react to messages from bots (including our OWN notifications).
+        # This is what keeps reply-all mode from looping on itself.
+        if message.get("from", {}).get("is_bot"):
             return
         text = message.get("text")
         if not text:
@@ -173,7 +188,10 @@ class TelegramListener:
         if chat_id and str(chat.get("id")) != str(chat_id):
             return
 
-        question = self._extract_question(text, message)
+        # Reply-all only kicks in when a specific group is configured, so the bot
+        # never blindly answers everything in an unknown chat.
+        effective_reply_all = reply_all and bool(chat_id)
+        question = self._extract_question(text, message, effective_reply_all)
         if question is None:
             return
         if not question:
