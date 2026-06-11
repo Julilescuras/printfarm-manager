@@ -29,6 +29,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import async_session
 from app.models.printer import Printer
 from app.models.print_job import PrintJob, PrintHistory
+from app.models.maintenance import MaintenanceRecord
+from app.models.settings import AppSettings
 from app.services.moonraker import moonraker_manager
 from app.services.spoolman import spoolman_client
 from app.config import settings
@@ -117,6 +119,20 @@ class Dispatcher:
                 logger.warning(
                     f"Printer {printer_id} ({printer.name}) is '{printer.status}' but "
                     f"bed_cleared=False — refusing to dispatch until bed is cleared manually"
+                )
+                return False
+
+            # Maintenance gate (optional, off by default = alert-only mode). When
+            # the 'maintenance_block_dispatch' setting is on, a printer with ANY
+            # active maintenance alert is held: the in-flight print is never
+            # interrupted, but no NEW job is dispatched until the maintenance is
+            # reset. Lets the operator service the machine (nozzle, belt, etc.)
+            # before it keeps producing.
+            if await self._maintenance_blocks_dispatch(session, printer):
+                logger.warning(
+                    f"Printer {printer_id} ({printer.name}) has an active maintenance "
+                    f"alert and maintenance_block_dispatch is on — refusing to dispatch "
+                    f"until maintenance is reset"
                 )
                 return False
 
@@ -261,6 +277,34 @@ class Dispatcher:
 
         return True, ""
 
+    async def _maintenance_blocks_dispatch(
+        self, session: AsyncSession, printer: Printer
+    ) -> bool:
+        """Return True if dispatch to this printer must be held for maintenance.
+
+        Only blocks when BOTH the 'maintenance_block_dispatch' setting is enabled
+        AND the printer has at least one maintenance record with an active alert.
+        Default (setting absent/false) → never blocks (alert-only mode).
+        """
+        result = await session.execute(
+            select(AppSettings).where(
+                AppSettings.key == "maintenance_block_dispatch"
+            )
+        )
+        setting = result.scalar_one_or_none()
+        if not setting or setting.value.strip().lower() != "true":
+            return False
+
+        result = await session.execute(
+            select(MaintenanceRecord).where(
+                and_(
+                    MaintenanceRecord.printer_id == printer.id,
+                    MaintenanceRecord.is_alert_active.is_(True),
+                )
+            )
+        )
+        return result.scalars().first() is not None
+
     async def _dispatch_job(
         self, session: AsyncSession, job: PrintJob, printer: Printer
     ) -> bool:
@@ -346,6 +390,9 @@ class Dispatcher:
                     job_name=job.name,
                     gcode_filename=job.gcode_original_name,
                     material=job.required_material,
+                    required_nozzle=job.required_nozzle,
+                    required_color=job.required_color,
+                    required_filament_id=job.required_filament_id,
                     estimated_weight_g=job.estimated_weight_g,
                     started_at=job.started_at,
                     completed_at=datetime.now(timezone.utc),
@@ -409,6 +456,9 @@ class Dispatcher:
                 job_name=job.name,
                 gcode_filename=job.gcode_original_name,
                 material=job.required_material,
+                required_nozzle=job.required_nozzle,
+                required_color=job.required_color,
+                required_filament_id=job.required_filament_id,
                 estimated_weight_g=job.estimated_weight_g,
                 started_at=job.started_at,
                 completed_at=datetime.now(timezone.utc),
@@ -489,6 +539,9 @@ class Dispatcher:
                     job_name=job.name,
                     gcode_filename=job.gcode_original_name,
                     material=job.required_material,
+                    required_nozzle=job.required_nozzle,
+                    required_color=job.required_color,
+                    required_filament_id=job.required_filament_id,
                     estimated_weight_g=job.estimated_weight_g,
                     started_at=job.started_at,
                     completed_at=datetime.now(timezone.utc),

@@ -13,6 +13,7 @@ import {
   Download,
   Search,
   GitCommit,
+  Wrench,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { AppearancePanel } from "@/components/settings/appearance-panel";
@@ -22,6 +23,7 @@ export default function SettingsPage() {
   const [botToken, setBotToken] = useState("");
   const [chatId, setChatId] = useState("");
   const [telegramEnabled, setTelegramEnabled] = useState(false);
+  const [maintBlockDispatch, setMaintBlockDispatch] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle");
@@ -52,6 +54,7 @@ export default function SettingsPage() {
       setBotToken(data.telegram_bot_token || "");
       setChatId(data.telegram_chat_id || "");
       setTelegramEnabled(data.telegram_enabled === "true");
+      setMaintBlockDispatch(data.maintenance_block_dispatch === "true");
     } catch (err) {
       console.error("Error loading settings:", err);
     } finally {
@@ -67,6 +70,7 @@ export default function SettingsPage() {
         telegram_bot_token: botToken,
         telegram_chat_id: chatId,
         telegram_enabled: telegramEnabled ? "true" : "false",
+        maintenance_block_dispatch: maintBlockDispatch ? "true" : "false",
       });
       setSaveStatus("success");
       setTimeout(() => setSaveStatus("idle"), 3000);
@@ -286,6 +290,48 @@ export default function SettingsPage() {
         <div className="p-3 rounded-lg bg-secondary/50 border border-border text-xs text-muted-foreground">
           Las imágenes se compilan automáticamente en GitHub Actions al hacer push. La actualización descarga la imagen pre-compilada (~2-3 min en lugar de 25 min).
         </div>
+      </div>
+
+      {/* Maintenance dispatch behavior */}
+      <div className="glass-card p-6 space-y-4">
+        <h2 className="text-lg font-semibold flex items-center gap-2">
+          <Wrench className="w-5 h-5 text-amber-400" />
+          Mantenimiento y Despacho
+        </h2>
+
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="font-medium">Bloquear despacho por alertas de mantenimiento</p>
+            <p className="text-sm text-muted-foreground">
+              {maintBlockDispatch
+                ? "Modo bloqueo: una impresora con una alerta de mantenimiento activa no recibirá trabajos nuevos hasta que resetees ese mantenimiento. La impresión en curso nunca se interrumpe."
+                : "Modo solo alertas: se notifica el mantenimiento, pero la impresora sigue aceptando trabajos automáticamente."}
+            </p>
+          </div>
+          <button
+            onClick={() => setMaintBlockDispatch(!maintBlockDispatch)}
+            className="relative w-14 min-w-[3.5rem] h-7 rounded-full transition-colors duration-300 focus:outline-none shrink-0"
+            style={{
+              backgroundColor: maintBlockDispatch ? "hsl(var(--primary))" : "hsl(var(--muted))",
+            }}
+          >
+            <span
+              className="absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-md transition-transform duration-300"
+              style={{
+                transform: maintBlockDispatch ? "translateX(28px)" : "translateX(0px)",
+              }}
+            />
+          </button>
+        </div>
+
+        <button
+          onClick={handleSave}
+          disabled={isSaving}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors disabled:opacity-50"
+        >
+          {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+          {saveStatus === "success" ? "¡Guardado!" : "Guardar"}
+        </button>
       </div>
 
       {/* Telegram Section */}
