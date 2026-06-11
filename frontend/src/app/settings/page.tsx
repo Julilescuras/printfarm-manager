@@ -29,6 +29,9 @@ export default function SettingsPage() {
   const [botToken, setBotToken] = useState("");
   const [chatId, setChatId] = useState("");
   const [telegramEnabled, setTelegramEnabled] = useState(false);
+  const [weeklyReportEnabled, setWeeklyReportEnabled] = useState(true);
+  const [weeklyReportDay, setWeeklyReportDay] = useState("4");
+  const [weeklyReportHour, setWeeklyReportHour] = useState("9");
   const [maintBlockDispatch, setMaintBlockDispatch] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
@@ -78,6 +81,9 @@ export default function SettingsPage() {
       setBotToken(data.telegram_bot_token || "");
       setChatId(data.telegram_chat_id || "");
       setTelegramEnabled(data.telegram_enabled === "true");
+      setWeeklyReportEnabled(data.weekly_report_enabled !== "false");
+      setWeeklyReportDay(data.weekly_report_day || "4");
+      setWeeklyReportHour(data.weekly_report_hour || "9");
       setMaintBlockDispatch(data.maintenance_block_dispatch === "true");
       setAssistantEnabled(data.assistant_enabled === "true");
       setAssistantReplyAll(data.assistant_reply_all === "true");
@@ -103,6 +109,9 @@ export default function SettingsPage() {
         telegram_bot_token: botToken,
         telegram_chat_id: chatId,
         telegram_enabled: telegramEnabled ? "true" : "false",
+        weekly_report_enabled: weeklyReportEnabled ? "true" : "false",
+        weekly_report_day: weeklyReportDay,
+        weekly_report_hour: weeklyReportHour,
         maintenance_block_dispatch: maintBlockDispatch ? "true" : "false",
         assistant_enabled: assistantEnabled ? "true" : "false",
         assistant_reply_all: assistantReplyAll ? "true" : "false",
@@ -460,6 +469,67 @@ export default function SettingsPage() {
             placeholder="-1001234567890"
             className="w-full px-3 py-2 rounded-lg bg-secondary border border-border focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all text-sm font-mono"
           />
+        </div>
+
+        {/* Weekly report schedule */}
+        <div className="pt-2 border-t border-border space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">Reporte semanal de producción</p>
+              <p className="text-sm text-muted-foreground">
+                Resumen de impresiones, horas y filamento de los últimos 7 días, enviado al grupo.
+              </p>
+            </div>
+            <button
+              onClick={() => setWeeklyReportEnabled(!weeklyReportEnabled)}
+              className="relative w-14 min-w-[3.5rem] h-7 rounded-full transition-colors duration-300 focus:outline-none shrink-0"
+              style={{
+                backgroundColor: weeklyReportEnabled ? "hsl(var(--primary))" : "hsl(var(--muted))",
+              }}
+            >
+              <span
+                className="absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-md transition-transform duration-300"
+                style={{
+                  transform: weeklyReportEnabled ? "translateX(28px)" : "translateX(0px)",
+                }}
+              />
+            </button>
+          </div>
+
+          {weeklyReportEnabled && (
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="block text-sm font-medium mb-1.5">Día</label>
+                <select
+                  value={weeklyReportDay}
+                  onChange={(e) => setWeeklyReportDay(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-secondary border border-border focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all text-sm"
+                >
+                  <option value="0">Lunes</option>
+                  <option value="1">Martes</option>
+                  <option value="2">Miércoles</option>
+                  <option value="3">Jueves</option>
+                  <option value="4">Viernes</option>
+                  <option value="5">Sábado</option>
+                  <option value="6">Domingo</option>
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="block text-sm font-medium mb-1.5">Hora</label>
+                <select
+                  value={weeklyReportHour}
+                  onChange={(e) => setWeeklyReportHour(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-secondary border border-border focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all text-sm"
+                >
+                  {Array.from({ length: 24 }, (_, h) => (
+                    <option key={h} value={String(h)}>
+                      {String(h).padStart(2, "0")}:00
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Buttons */}

@@ -111,7 +111,7 @@ export interface SpoolInfo {
 }
 
 export interface WSMessage {
-  type: "initial_state" | "printer_update" | "queue_update" | "maintenance_update";
+  type: "initial_state" | "printer_update" | "printer_removed" | "queue_update" | "maintenance_update";
   data: any;
 }
 

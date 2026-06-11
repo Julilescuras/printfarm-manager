@@ -25,6 +25,12 @@ Thumbs.db
 # Local backups
 backup/
 
+# Scripts puntuales de diagnóstico (sesiones de setup de Klipper/Moonraker/etc.)
+scripts/oneoff/
+
+# Memoria del asistente (notas locales de sesiones)
+memory/
+
 # Hardware / personal configs (no van al repo)
 camara_nebula.yaml
 *.cfg

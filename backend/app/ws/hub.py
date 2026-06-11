@@ -59,6 +59,14 @@ class WebSocketHub:
         })
         await self._broadcast(message)
 
+    async def broadcast_printer_removed(self, printer_id: int):
+        """Notify frontends that a printer was deleted from the farm."""
+        message = json.dumps({
+            "type": "printer_removed",
+            "data": {"id": printer_id},
+        })
+        await self._broadcast(message)
+
     async def broadcast_queue_update(self):
         """Notify frontends that the queue has changed."""
         message = json.dumps({

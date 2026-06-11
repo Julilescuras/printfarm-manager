@@ -296,3 +296,6 @@ def _try_write_installed_sha():
 def _log(msg: str):
     logger.info(f"[Updater] {msg}")
     _update_log.append(msg)
+    # Keep the in-memory log bounded
+    if len(_update_log) > 300:
+        del _update_log[:-300]
