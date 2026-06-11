@@ -63,7 +63,7 @@ export interface PrintJob {
   updated_at: string | null;
 }
 
-export type JobStatus = "pending" | "printing" | "completed" | "cancelled";
+export type JobStatus = "pending" | "paused" | "printing" | "completed" | "cancelled";
 
 export interface MaintenanceRecord {
   id: number;

@@ -55,10 +55,18 @@ async def list_queue(
     status: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
-    """List print queue, optionally filtered by status."""
+    """List print queue, optionally filtered by status.
+
+    `status` accepts a single value ("pending") or a comma-separated list
+    ("pending,paused") so the UI can show held jobs alongside the queue.
+    """
     query = select(PrintJob)
     if status:
-        query = query.where(PrintJob.status == status)
+        statuses = [s.strip() for s in status.split(",") if s.strip()]
+        if len(statuses) == 1:
+            query = query.where(PrintJob.status == statuses[0])
+        elif statuses:
+            query = query.where(PrintJob.status.in_(statuses))
     query = query.order_by(PrintJob.priority.desc(), PrintJob.created_at.asc())
 
     result = await db.execute(query)
@@ -89,10 +97,16 @@ async def add_job(
     required_filament_id: Optional[int] = Form(None),
     copies: int = Form(1),
     priority: int = Form(0),
+    paused: bool = Form(False),
     gcode: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
 ):
-    """Add a new print job to the queue with G-code file upload."""
+    """Add a new print job to the queue with G-code file upload.
+
+    When `paused` is true the job is created held ('paused'): it is never
+    auto-dispatched until a human resumes it, even if a compatible printer is
+    free. On resume it re-enters the normal dispatcher (compatibility checks).
+    """
     # Validate compatible_models is valid JSON
     try:
         models_list = json.loads(compatible_models)
@@ -137,6 +151,7 @@ async def add_job(
             required_filament_id=required_filament_id,
             copies=1,
             priority=priority,
+            status="paused" if paused else "pending",
             estimated_time_secs=parsed.get("estimated_time_secs"),
             estimated_weight_g=parsed.get("estimated_weight_g"),
         )
@@ -220,7 +235,7 @@ async def reorder_queue(
 
         result = await db.execute(select(PrintJob).where(PrintJob.id == job_id))
         job = result.scalar_one_or_none()
-        if job and job.status == "pending":
+        if job and job.status in ("pending", "paused"):
             job.priority = new_priority
 
     await db.commit()
@@ -239,8 +254,8 @@ async def update_job(
     job = result.scalar_one_or_none()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    if job.status != "pending":
-        raise HTTPException(status_code=400, detail="Can only edit pending jobs")
+    if job.status not in ("pending", "paused"):
+        raise HTTPException(status_code=400, detail="Can only edit pending or paused jobs")
 
     update_data = job_update.model_dump(exclude_unset=True)
     for key, value in update_data.items():
@@ -330,6 +345,53 @@ async def clone_job(job_id: int, copies: int = 1, db: AsyncSession = Depends(get
     await ws_hub.broadcast_queue_update()
     await dispatcher.try_dispatch_all()
     return created
+
+
+@router.post("/{job_id}/pause", response_model=PrintJobResponse)
+async def pause_job(job_id: int, db: AsyncSession = Depends(get_db)):
+    """Hold a pending job so the dispatcher skips it, even if a compatible
+    printer is free. Only pending jobs can be paused — a job already printing
+    is stopped from the printer screen, not here."""
+    result = await db.execute(select(PrintJob).where(PrintJob.id == job_id))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status != "pending":
+        raise HTTPException(
+            status_code=400,
+            detail="Solo se pueden pausar trabajos pendientes.",
+        )
+
+    job.status = "paused"
+    await db.commit()
+    await db.refresh(job)
+    await ws_hub.broadcast_queue_update()
+    return job
+
+
+@router.post("/{job_id}/resume", response_model=PrintJobResponse)
+async def resume_job(job_id: int, db: AsyncSession = Depends(get_db)):
+    """Release a paused job back into the queue. It re-enters the normal
+    dispatcher flow (model/nozzle/filament/weight checks) and is dispatched
+    to the first compatible idle printer."""
+    result = await db.execute(select(PrintJob).where(PrintJob.id == job_id))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status != "paused":
+        raise HTTPException(
+            status_code=400,
+            detail="El trabajo no está en pausa.",
+        )
+
+    job.status = "pending"
+    await db.commit()
+    await db.refresh(job)
+    await ws_hub.broadcast_queue_update()
+
+    # Re-enter the normal dispatcher: it will match it to a compatible printer.
+    await dispatcher.try_dispatch_all()
+    return job
 
 
 @router.post("/{job_id}/requeue", response_model=PrintJobResponse)

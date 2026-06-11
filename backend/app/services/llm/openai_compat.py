@@ -9,6 +9,7 @@ free Gemini/Groq and paid OpenAI a one-setting change.
 
 import json
 import logging
+import re
 from typing import Optional
 
 import httpx
@@ -30,6 +31,32 @@ TRANSCRIBE_MODELS = {
     "groq": "whisper-large-v3-turbo",
     "openai": "whisper-1",
 }
+
+# Groq's Llama models occasionally emit a tool call as plain text in a broken
+# pseudo-format (e.g. `<function=nombre({"x": 1})</function>`) instead of the
+# structured tool_calls field, and Groq rejects it with a 400 `tool_use_failed`
+# returning the attempt in `failed_generation`. This recovers those.
+_PSEUDO_CALL_RE = re.compile(r"<function=([A-Za-z0-9_]+)(.*?)</function>", re.DOTALL)
+_JSON_OBJ_RE = re.compile(r"\{.*\}", re.DOTALL)
+
+
+def _recover_pseudo_tool_calls(failed_generation: str) -> list[ToolCall]:
+    """Parse Groq's malformed `<function=name(args)</function>` text into ToolCalls."""
+    calls: list[ToolCall] = []
+    for idx, match in enumerate(_PSEUDO_CALL_RE.finditer(failed_generation or "")):
+        name = match.group(1)
+        inner = match.group(2) or ""
+        args: dict = {}
+        json_match = _JSON_OBJ_RE.search(inner)
+        if json_match:
+            try:
+                parsed = json.loads(json_match.group(0))
+                if isinstance(parsed, dict):
+                    args = parsed
+            except json.JSONDecodeError:
+                args = {}
+        calls.append(ToolCall(id=f"recovered_{idx}", name=name, arguments=args))
+    return calls
 
 
 class OpenAICompatProvider(LLMProvider):
@@ -147,11 +174,30 @@ class OpenAICompatProvider(LLMProvider):
             raise LLMProviderError(f"No se pudo conectar al motor LLM: {exc}") from exc
 
         if resp.status_code != 200:
+            recovered = self._try_recover(resp)
+            if recovered is not None:
+                return recovered
             raise LLMProviderError(
                 f"Error del motor LLM ({self.name}) {resp.status_code}: {resp.text[:500]}"
             )
 
         return self._decode_response(resp.json())
+
+    @staticmethod
+    def _try_recover(resp: httpx.Response) -> Optional[LLMResponse]:
+        """If the model emitted a malformed tool call (Groq `tool_use_failed`),
+        salvage it into a proper LLMResponse so the agent loop can continue."""
+        try:
+            err = resp.json().get("error", {})
+        except (json.JSONDecodeError, ValueError, AttributeError):
+            return None
+        if err.get("code") != "tool_use_failed":
+            return None
+        calls = _recover_pseudo_tool_calls(err.get("failed_generation", ""))
+        if not calls:
+            return None
+        logger.info("Recovered %d malformed tool call(s) from tool_use_failed", len(calls))
+        return LLMResponse(content=None, tool_calls=calls)
 
     async def transcribe(self, audio: bytes, filename: str, mime: str = "audio/ogg") -> str:
         """Transcribe audio via the OpenAI-compatible /audio/transcriptions endpoint
