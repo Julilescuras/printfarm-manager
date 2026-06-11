@@ -232,6 +232,14 @@ export const api = {
   testTelegram: () =>
     apiFetch<any>("/api/settings/telegram/test", { method: "POST" }),
 
+  // Assistant (conversational agent)
+  getAssistantProviders: () =>
+    apiFetch<{ providers: { id: string; label: string; default_model: string; paid: boolean }[] }>(
+      "/api/settings/assistant/providers"
+    ),
+  testAssistant: () =>
+    apiFetch<any>("/api/settings/assistant/test", { method: "POST" }),
+
   // System updates
   checkUpdate: () => apiFetch<any>("/api/settings/update-check"),
   applyUpdate: () => apiFetch<any>("/api/settings/update-apply", { method: "POST" }),

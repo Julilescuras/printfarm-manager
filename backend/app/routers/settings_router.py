@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.settings import AppSettings
 from app.services.telegram import telegram_notifier
+from app.services.llm.base import ChatMessage, LLMProviderError
+from app.services.llm.factory import PROVIDER_DEFAULTS, get_provider
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -58,6 +60,50 @@ async def test_telegram():
     if success:
         return {"status": "ok", "message": "Mensaje de prueba enviado correctamente"}
     return {"status": "error", "message": "No se pudo enviar. Verificá el Bot Token y Chat ID."}
+
+
+# ─── Assistant (conversational agent) Endpoints ───────────────────────────────
+
+@router.get("/assistant/providers")
+async def list_assistant_providers():
+    """List the available LLM providers and their defaults, for the settings UI."""
+    return {
+        "providers": [
+            {
+                "id": pid,
+                "label": meta["label"],
+                "default_model": meta["model"],
+                "paid": pid in ("openai", "anthropic"),
+            }
+            for pid, meta in PROVIDER_DEFAULTS.items()
+        ]
+    }
+
+
+@router.post("/assistant/test")
+async def test_assistant():
+    """Ping the configured LLM with a minimal prompt to validate provider + key."""
+    try:
+        provider = await get_provider()
+    except LLMProviderError as exc:
+        return {"status": "error", "message": str(exc)}
+
+    try:
+        response = await provider.chat(
+            [
+                ChatMessage(role="system", content="Respondé únicamente con la palabra: OK"),
+                ChatMessage(role="user", content="ping"),
+            ],
+            tools=None,
+        )
+    except LLMProviderError as exc:
+        return {"status": "error", "message": str(exc)}
+
+    return {
+        "status": "ok",
+        "message": f"Motor '{provider.name}' respondió correctamente.",
+        "reply": (response.content or "").strip()[:100],
+    }
 
 
 # ─── System Update Endpoints ──────────────────────────────────────────────────

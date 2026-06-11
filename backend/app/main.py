@@ -30,6 +30,7 @@ from app.services.moonraker import moonraker_manager
 from app.services.monitor import monitor
 from app.services.reporter import weekly_reporter
 from app.services.dispatcher import dispatcher
+from app.services.assistant.listener import telegram_listener
 from app.ws.hub import ws_hub
 
 # Configure logging
@@ -144,12 +145,17 @@ async def lifespan(app: FastAPI):
     # 7. Start auto-dispatch loop
     await dispatcher.start_auto_dispatch()
 
+    # 8. Start the Telegram assistant listener (no-ops until enabled in settings)
+    await telegram_listener.start()
+    logger.info("✅ Telegram assistant listener started")
+
     logger.info("🟢 PrintFarm Manager is ready!")
 
     yield  # App is running
 
     # Shutdown
     logger.info("🔴 PrintFarm Manager shutting down...")
+    await telegram_listener.stop()
     await dispatcher.stop_auto_dispatch()
     await weekly_reporter.stop()
     await monitor.stop()
