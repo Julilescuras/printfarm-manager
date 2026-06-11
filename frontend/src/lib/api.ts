@@ -126,7 +126,7 @@ export const api = {
 
   // Queue
   getQueue: (status?: string) =>
-    apiFetch<any[]>(`/api/queue${status ? `?status=${status}` : ""}`),
+    apiFetch<any[]>(`/api/queue${status ? `?status=${encodeURIComponent(status)}` : ""}`),
   getHistory: (limit: number = 100) =>
     apiFetch<any[]>(`/api/queue/history?limit=${limit}`),
   addJob: (formData: FormData) =>

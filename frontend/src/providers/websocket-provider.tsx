@@ -63,9 +63,18 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
             }
             case "printer_update": {
               const updatedPrinter = msg.data as PrinterState;
+              // Upsert: a freshly created printer isn't in the list yet — append
+              // it instead of silently dropping the update.
               setPrinters((prev) =>
-                prev.map((p) => (p.id === updatedPrinter.id ? updatedPrinter : p))
+                prev.some((p) => p.id === updatedPrinter.id)
+                  ? prev.map((p) => (p.id === updatedPrinter.id ? updatedPrinter : p))
+                  : [...prev, updatedPrinter].sort((a, b) => a.id - b.id)
               );
+              break;
+            }
+            case "printer_removed": {
+              const removedId = (msg.data as { id: number }).id;
+              setPrinters((prev) => prev.filter((p) => p.id !== removedId));
               break;
             }
             case "queue_update":
