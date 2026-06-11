@@ -6,8 +6,25 @@ import { PrinterCard } from "@/components/dashboard/printer-card";
 import { Activity, AlertTriangle, CheckCircle, Printer } from "lucide-react";
 import Link from "next/link";
 
+function PrinterSkeleton() {
+  return (
+    <div className="glass-card p-5 animate-pulse space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="h-5 w-32 bg-white/10 rounded" />
+        <div className="h-5 w-20 bg-white/10 rounded-full" />
+      </div>
+      <div className="h-3 w-48 bg-white/10 rounded" />
+      <div className="h-2 w-full bg-white/10 rounded-full" />
+      <div className="flex gap-2 pt-1">
+        <div className="h-8 flex-1 bg-white/10 rounded" />
+        <div className="h-8 flex-1 bg-white/10 rounded" />
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
-  const { printers, activeAlerts, refreshState } = useWSContext();
+  const { printers, activeAlerts, isInitialized, refreshState } = useWSContext();
 
   const stats = {
     total: printers.length,
@@ -43,7 +60,7 @@ export default function DashboardPage() {
             <Activity className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <div className="text-2xl font-bold">{stats.printing}</div>
+            <div className="text-2xl font-bold">{isInitialized ? stats.printing : <span className="text-muted-foreground/40 animate-pulse">–</span>}</div>
             <div className="text-xs text-muted-foreground">Imprimiendo</div>
           </div>
         </div>
@@ -53,7 +70,7 @@ export default function DashboardPage() {
             <CheckCircle className="w-5 h-5 text-green-400" />
           </div>
           <div>
-            <div className="text-2xl font-bold">{stats.available}</div>
+            <div className="text-2xl font-bold">{isInitialized ? stats.available : <span className="text-muted-foreground/40 animate-pulse">–</span>}</div>
             <div className="text-xs text-muted-foreground">Disponibles</div>
           </div>
         </div>
@@ -63,7 +80,7 @@ export default function DashboardPage() {
             <Printer className="w-5 h-5 text-purple-400" />
           </div>
           <div>
-            <div className="text-2xl font-bold">{stats.clearance}</div>
+            <div className="text-2xl font-bold">{isInitialized ? stats.clearance : <span className="text-muted-foreground/40 animate-pulse">–</span>}</div>
             <div className="text-xs text-muted-foreground">Cama Ocupada</div>
           </div>
         </div>
@@ -74,7 +91,7 @@ export default function DashboardPage() {
           </div>
           <div>
             <div className="text-2xl font-bold">
-              {stats.error + stats.offline}
+              {isInitialized ? stats.error + stats.offline : <span className="text-muted-foreground/40 animate-pulse">–</span>}
             </div>
             <div className="text-xs text-muted-foreground">Error/Offline</div>
           </div>
@@ -96,27 +113,35 @@ export default function DashboardPage() {
       </div>
 
       {/* Printer Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {printers.map((printer) => (
-          <Link key={printer.id} href={`/printer/${printer.id}`} className="block transition-transform hover:scale-[1.01]">
-            <PrinterCard
-              printer={printer}
-              onUpdate={refreshState}
-            />
-          </Link>
-        ))}
-      </div>
-
-      {printers.length === 0 && (
-        <div className="glass-card p-12 text-center">
-          <div className="text-5xl mb-4">🖨️</div>
-          <h3 className="text-lg font-semibold mb-2">
-            No hay impresoras configuradas
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            Añade impresoras desde la sección "Impresoras" en el menú lateral.
-          </p>
+      {!isInitialized ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {[1, 2, 3].map((i) => <PrinterSkeleton key={i} />)}
         </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {printers.map((printer) => (
+              <Link key={printer.id} href={`/printer/${printer.id}`} className="block transition-transform hover:scale-[1.01]">
+                <PrinterCard
+                  printer={printer}
+                  onUpdate={refreshState}
+                />
+              </Link>
+            ))}
+          </div>
+
+          {printers.length === 0 && (
+            <div className="glass-card p-12 text-center">
+              <div className="text-5xl mb-4">🖨️</div>
+              <h3 className="text-lg font-semibold mb-2">
+                No hay impresoras configuradas
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Añade impresoras desde la sección "Impresoras" en el menú lateral.
+              </p>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
