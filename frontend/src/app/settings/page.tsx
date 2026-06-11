@@ -14,6 +14,9 @@ import {
   Search,
   GitCommit,
   Wrench,
+  Sparkles,
+  KeyRound,
+  Cpu,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { AppearancePanel } from "@/components/settings/appearance-panel";
@@ -31,6 +34,18 @@ export default function SettingsPage() {
   const [testMessage, setTestMessage] = useState("");
   const [isLoading, setIsLoading] = useState(true);
 
+  // ── Assistant (conversational agent) state ────────────────────────────────
+  const [assistantEnabled, setAssistantEnabled] = useState(false);
+  const [assistantProvider, setAssistantProvider] = useState("gemini");
+  const [assistantApiKey, setAssistantApiKey] = useState("");
+  const [assistantModel, setAssistantModel] = useState("");
+  const [providers, setProviders] = useState<
+    { id: string; label: string; default_model: string; paid: boolean }[]
+  >([]);
+  const [isTestingAssistant, setIsTestingAssistant] = useState(false);
+  const [assistantTestStatus, setAssistantTestStatus] = useState<"idle" | "success" | "error">("idle");
+  const [assistantTestMessage, setAssistantTestMessage] = useState("");
+
   // ── Update state ──────────────────────────────────────────────────────────
   const [currentVersion, setCurrentVersion] = useState<string>("");
   const [updateInfo, setUpdateInfo] = useState<any>(null);
@@ -45,6 +60,7 @@ export default function SettingsPage() {
     loadSettings();
     // Cargar versión actual desde /api/status (sin DNS externo, siempre disponible)
     api.getSystemStatus().then((d) => setCurrentVersion(d.version || "")).catch(() => {});
+    api.getAssistantProviders().then((d) => setProviders(d.providers || [])).catch(() => {});
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
 
@@ -55,6 +71,10 @@ export default function SettingsPage() {
       setChatId(data.telegram_chat_id || "");
       setTelegramEnabled(data.telegram_enabled === "true");
       setMaintBlockDispatch(data.maintenance_block_dispatch === "true");
+      setAssistantEnabled(data.assistant_enabled === "true");
+      setAssistantProvider(data.assistant_provider || "gemini");
+      setAssistantApiKey(data.assistant_api_key || "");
+      setAssistantModel(data.assistant_model || "");
     } catch (err) {
       console.error("Error loading settings:", err);
     } finally {
@@ -71,6 +91,10 @@ export default function SettingsPage() {
         telegram_chat_id: chatId,
         telegram_enabled: telegramEnabled ? "true" : "false",
         maintenance_block_dispatch: maintBlockDispatch ? "true" : "false",
+        assistant_enabled: assistantEnabled ? "true" : "false",
+        assistant_provider: assistantProvider,
+        assistant_api_key: assistantApiKey,
+        assistant_model: assistantModel,
       });
       setSaveStatus("success");
       setTimeout(() => setSaveStatus("idle"), 3000);
@@ -153,6 +177,31 @@ export default function SettingsPage() {
       setIsTesting(false);
     }
   };
+
+  const handleTestAssistant = async () => {
+    // Persist first so the backend tests against what's on screen.
+    setIsTestingAssistant(true);
+    setAssistantTestStatus("idle");
+    setAssistantTestMessage("");
+    try {
+      await handleSave();
+      const result = await api.testAssistant();
+      if (result.status === "ok") {
+        setAssistantTestStatus("success");
+        setAssistantTestMessage(result.message);
+      } else {
+        setAssistantTestStatus("error");
+        setAssistantTestMessage(result.message);
+      }
+    } catch (err: any) {
+      setAssistantTestStatus("error");
+      setAssistantTestMessage(err.message || "Error al probar el asistente");
+    } finally {
+      setIsTestingAssistant(false);
+    }
+  };
+
+  const currentProviderMeta = providers.find((p) => p.id === assistantProvider);
 
   if (isLoading) {
     return (
@@ -480,6 +529,183 @@ export default function SettingsPage() {
             <li>Pegá el Chat ID arriba, activá las notificaciones y dale a <strong>Guardar</strong></li>
             <li>Probá con el botón <strong>Enviar prueba</strong> para verificar que funcione</li>
           </ol>
+        </div>
+      </div>
+
+      {/* Assistant Section — conversational agent in the Telegram group */}
+      <div className="glass-card p-6 space-y-5">
+        <h2 className="text-lg font-semibold flex items-center gap-2">
+          <Sparkles className="w-5 h-5 text-violet-400" />
+          Asistente del grupo (IA)
+        </h2>
+        <p className="text-sm text-muted-foreground -mt-2">
+          Permite preguntarle al bot en lenguaje natural dentro del grupo de Telegram
+          (estado de impresoras, filamento, cola, mantenimiento). Usa el mismo Bot Token
+          y Chat ID configurados arriba.
+        </p>
+
+        {/* Enable/Disable Toggle */}
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-medium">Habilitar asistente</p>
+            <p className="text-sm text-muted-foreground">
+              El bot escucha el grupo y responde preguntas (por ahora, solo consultas)
+            </p>
+          </div>
+          <button
+            onClick={() => setAssistantEnabled(!assistantEnabled)}
+            className="relative w-14 min-w-[3.5rem] h-7 rounded-full transition-colors duration-300 focus:outline-none shrink-0"
+            style={{
+              backgroundColor: assistantEnabled ? "hsl(var(--primary))" : "hsl(var(--muted))",
+            }}
+          >
+            <span
+              className="absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-md transition-transform duration-300"
+              style={{
+                transform: assistantEnabled ? "translateX(28px)" : "translateX(0px)",
+              }}
+            />
+          </button>
+        </div>
+
+        {/* Provider selector */}
+        <div>
+          <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
+            <Cpu className="w-4 h-4" />
+            Motor (proveedor de IA)
+          </label>
+          <select
+            value={assistantProvider}
+            onChange={(e) => setAssistantProvider(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg bg-secondary border border-border focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all text-sm"
+          >
+            {providers.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-muted-foreground mt-1">
+            {currentProviderMeta?.paid
+              ? "Proveedor pago — necesitás una cuenta con saldo."
+              : "Gratis — generá una API key sin tarjeta."}{" "}
+            Cambiar de motor no requiere reinstalar nada.
+          </p>
+        </div>
+
+        {/* API Key */}
+        <div>
+          <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
+            <KeyRound className="w-4 h-4" />
+            API Key
+          </label>
+          <input
+            type="password"
+            value={assistantApiKey}
+            onChange={(e) => setAssistantApiKey(e.target.value)}
+            placeholder="Pegá la API key del proveedor elegido"
+            className="w-full px-3 py-2 rounded-lg bg-secondary border border-border focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all text-sm font-mono"
+          />
+        </div>
+
+        {/* Model (optional) */}
+        <div>
+          <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
+            <Bot className="w-4 h-4" />
+            Modelo <span className="text-muted-foreground font-normal">(opcional)</span>
+          </label>
+          <input
+            type="text"
+            value={assistantModel}
+            onChange={(e) => setAssistantModel(e.target.value)}
+            placeholder={currentProviderMeta?.default_model || "modelo por defecto"}
+            className="w-full px-3 py-2 rounded-lg bg-secondary border border-border focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all text-sm font-mono"
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            Dejalo vacío para usar el recomendado: <code className="bg-secondary px-1 rounded">{currentProviderMeta?.default_model || "—"}</code>
+          </p>
+        </div>
+
+        {/* Buttons */}
+        <div className="flex gap-3">
+          <button
+            onClick={handleSave}
+            disabled={isSaving}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors disabled:opacity-50"
+          >
+            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+            {saveStatus === "success" ? "¡Guardado!" : "Guardar"}
+          </button>
+          <button
+            onClick={handleTestAssistant}
+            disabled={isTestingAssistant || !assistantApiKey}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 text-white font-medium text-sm hover:bg-violet-500 transition-colors disabled:opacity-50"
+          >
+            {isTestingAssistant ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            Probar conexión
+          </button>
+        </div>
+
+        {/* Test result */}
+        {assistantTestMessage && (
+          <div
+            className={`flex items-center gap-2 text-sm p-3 rounded-lg ${
+              assistantTestStatus === "success"
+                ? "bg-green-500/10 text-green-400 border border-green-500/20"
+                : "bg-red-500/10 text-red-400 border border-red-500/20"
+            }`}
+          >
+            {assistantTestStatus === "success" ? (
+              <Check className="w-4 h-4 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 shrink-0" />
+            )}
+            {assistantTestMessage}
+          </div>
+        )}
+
+        {/* Instructions */}
+        <div className="p-4 rounded-lg bg-secondary/50 border border-border space-y-3">
+          <h3 className="text-sm font-semibold flex items-center gap-2">
+            💬 ¿Cómo usarlo en el grupo?
+          </h3>
+          <ul className="text-xs text-muted-foreground space-y-2 list-disc list-inside">
+            <li>
+              Para la opción gratis (<strong>Gemini</strong>), generá tu API key en{" "}
+              <a
+                href="https://aistudio.google.com/apikey"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-400 hover:underline inline-flex items-center gap-0.5"
+              >
+                Google AI Studio <ExternalLink className="w-3 h-3" />
+              </a>{" "}
+              (no pide tarjeta), pegala arriba y guardá.
+            </li>
+            <li>
+              En el grupo, escribile al bot con{" "}
+              <code className="bg-secondary px-1 rounded">/pregunta</code> seguido de tu
+              consulta, mencionándolo con <code className="bg-secondary px-1 rounded">@tubot</code>,
+              o respondiendo a uno de sus mensajes.
+            </li>
+            <li>
+              Ejemplos: <em>«/pregunta ¿qué impresoras están andando?»</em> ·{" "}
+              <em>«¿cuánto le queda a la bobina negra?»</em> · <em>«¿qué hay en la cola?»</em>
+            </li>
+            <li>
+              Para que responda a cualquier mensaje sin comando, desactivá el{" "}
+              <em>privacy mode</em> del bot en{" "}
+              <a
+                href="https://t.me/BotFather"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-400 hover:underline inline-flex items-center gap-0.5"
+              >
+                @BotFather <ExternalLink className="w-3 h-3" />
+              </a>{" "}
+              (<code className="bg-secondary px-1 rounded">/setprivacy → Disable</code>).
+            </li>
+          </ul>
         </div>
       </div>
 
