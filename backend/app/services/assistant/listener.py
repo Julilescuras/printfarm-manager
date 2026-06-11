@@ -105,7 +105,10 @@ class TelegramListener:
                 updates = await self._get_updates(token)
                 for update in updates:
                     self._offset = update["update_id"] + 1
-                    await self._handle_update(update, cfg)
+                    # Handle each message in its own task so a slow LLM call
+                    # (~30s) doesn't block the long-poll loop and queue up the
+                    # rest of the group's messages behind it.
+                    asyncio.create_task(self._handle_update_safe(update, cfg))
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001 — never let the loop die
@@ -193,7 +196,9 @@ class TelegramListener:
 
         lowered = stripped.lower()
         for cmd in TRIGGER_COMMANDS:
-            if lowered.startswith(cmd):
+            # The command must be the whole word: '/pf hola' o '/pf@bot hola',
+            # pero NO '/pfx hola' (eso es otro comando, no nuestro).
+            if lowered.startswith(cmd) and (len(stripped) == len(cmd) or stripped[len(cmd)] in (" ", "@", "\n")):
                 rest = stripped[len(cmd):]
                 if rest[:1] == "@" and self._bot_username:
                     rest = rest.split(None, 1)[1] if " " in rest else ""
@@ -210,6 +215,13 @@ class TelegramListener:
             return stripped or None
 
         return None
+
+    async def _handle_update_safe(self, update: dict, cfg: dict) -> None:
+        """Wrapper for background tasks: a failing message never kills the loop."""
+        try:
+            await self._handle_update(update, cfg)
+        except Exception:  # noqa: BLE001
+            logger.exception("Error handling Telegram update %s", update.get("update_id"))
 
     async def _handle_update(self, update: dict, cfg: dict) -> None:
         token = cfg["bot_token"]

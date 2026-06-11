@@ -7,6 +7,7 @@ import asyncio
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -56,7 +57,14 @@ async def create_printer(data: PrinterCreate, db: AsyncSession = Depends(get_db)
         current_spool_id=data.current_spool_id,
     )
     db.add(printer)
-    await db.flush()  # To get printer.id
+    try:
+        await db.flush()  # To get printer.id
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=f"Ya existe una impresora con la URL de Moonraker '{data.moonraker_url}'.",
+        )
 
     # Create default maintenance records — single source of truth in config,
     # so web-created printers match those seeded from PRINTERS_CONFIG.
@@ -74,6 +82,9 @@ async def create_printer(data: PrinterCreate, db: AsyncSession = Depends(get_db)
 
     # Connect to the new printer's Moonraker
     await moonraker_manager.add_printer(printer.id, printer.moonraker_url)
+
+    # Push the new printer to connected frontends (the WS provider upserts it).
+    await ws_hub.broadcast_printer_update(printer.to_dict())
 
     return printer
 
@@ -96,7 +107,14 @@ async def update_printer(
             url_changed = True
         setattr(printer, field, value)
 
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Ya existe otra impresora con esa URL de Moonraker.",
+        )
     await db.refresh(printer)
 
     # If the printer is now Bowden, make sure the PTFE-tube maintenance task
@@ -123,6 +141,8 @@ async def update_printer(
     if url_changed:
         await moonraker_manager.add_printer(printer.id, printer.moonraker_url)
 
+    await ws_hub.broadcast_printer_update(printer.to_dict())
+
     return printer
 
 
@@ -137,6 +157,9 @@ async def delete_printer(printer_id: int, db: AsyncSession = Depends(get_db)):
     await moonraker_manager.remove_printer(printer_id)
     await db.delete(printer)
     await db.commit()
+
+    # Remove the card from connected frontends without needing a reload.
+    await ws_hub.broadcast_printer_removed(printer_id)
 
 
 @router.get("/{printer_id}/thumbnail")

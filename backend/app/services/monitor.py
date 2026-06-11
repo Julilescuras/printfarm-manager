@@ -5,6 +5,7 @@ and updates accumulated print hours from Moonraker's total_print_time.
 
 import asyncio
 import logging
+import time
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,9 +22,16 @@ logger = logging.getLogger("printfarm.monitor")
 class Monitor:
     """Background monitoring for maintenance alerts."""
 
+    # Persist live hour-credits at most this often. The crediting itself loses
+    # nothing by waiting (the delta is computed against the DB high-water mark),
+    # but committing + broadcasting every poll (10s) made every client refetch
+    # maintenance constantly during prints.
+    CREDIT_COMMIT_INTERVAL_SECS = 60
+
     def __init__(self):
         self._running = False
         self._task = None
+        self._last_credit_time = 0.0
 
     async def start(self):
         """Start the monitoring loop."""
@@ -65,6 +73,8 @@ class Monitor:
              pushing a maintenance update to the frontend.
         """
         any_change = False
+        now = time.time()
+        credit_due = (now - self._last_credit_time) >= self.CREDIT_COMMIT_INTERVAL_SECS
         async with async_session() as session:
             # Get all printers with their total print time
             result = await session.execute(select(Printer))
@@ -93,7 +103,7 @@ class Monitor:
                     # Klipper counter reset → a new print began. Rebase.
                     credited = 0
                 delta_secs = current - credited
-                if delta_secs > 0:
+                if delta_secs > 0 and credit_due:
                     delta_hours = delta_secs / 3600.0
                     for record in records:
                         record.accumulated_hours += delta_hours
@@ -133,6 +143,8 @@ class Monitor:
             # Only write to the DB when an alert state actually changed
             if any_change:
                 await session.commit()
+                if credit_due:
+                    self._last_credit_time = now
 
         # Notify connected frontends outside the DB session.
         # any_change covers both live hour crediting and alert transitions, so

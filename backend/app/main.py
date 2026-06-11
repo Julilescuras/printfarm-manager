@@ -177,7 +177,9 @@ from fastapi.responses import JSONResponse
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request, exc):
     logger.error(f"422 Validation Error: {exc}")
-    logger.error(f"Body: {await request.body()}")
+    # Truncate: an invalid G-code upload would otherwise dump megabytes to the log
+    body = await request.body()
+    logger.error(f"Body (primeros 500 bytes de {len(body)}): {body[:500]!r}")
     return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
 # Allow CORS for frontend

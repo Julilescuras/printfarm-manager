@@ -1,21 +1,38 @@
 """
 Reporter — Weekly report generator that sends production summaries via Telegram.
-Runs as a background asyncio task, fires every 7 days.
+
+Scheduling is persistent and configurable (settings in DB):
+  - weekly_report_enabled: "true" | "false" (default true)
+  - weekly_report_day:  0=lunes … 6=domingo (default 4 = viernes)
+  - weekly_report_hour: 0-23, hora local del servidor (default 9)
+  - weekly_report_last_sent: ISO date of the last report (managed automatically)
+
+The loop checks every few minutes whether the configured day/hour was reached
+and whether a report was already sent that day. Because the last-sent date is
+persisted in the DB, backend restarts (e.g. every update) no longer reset the
+schedule — this replaces the old "sleep 7 days from boot" logic that in
+practice never fired.
 """
 
 import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, and_
 
 from app.database import async_session
 from app.models.print_job import PrintHistory
+from app.models.settings import AppSettings
 from app.services.telegram import telegram_notifier
 
 logger = logging.getLogger("printfarm.reporter")
 
-REPORT_INTERVAL_SECS = 7 * 24 * 3600  # 7 days
+CHECK_INTERVAL_SECS = 5 * 60  # how often we evaluate the schedule
+
+DEFAULT_DAY = 4   # viernes (0 = lunes)
+DEFAULT_HOUR = 9
+DEFAULT_TZ = "America/Argentina/Buenos_Aires"
 
 
 class WeeklyReporter:
@@ -43,14 +60,70 @@ class WeeklyReporter:
         logger.info("Weekly reporter stopped")
 
     async def _report_loop(self):
-        """Main loop — waits 7 days then generates and sends report."""
+        """Main loop — periodically checks whether the report is due."""
         while self._running:
-            # Wait 7 days
-            await asyncio.sleep(REPORT_INTERVAL_SECS)
             try:
-                await self.generate_and_send()
+                if await self._is_due():
+                    await self.generate_and_send()
+                    await self._mark_sent()
             except Exception as e:
                 logger.error(f"Reporter error: {e}", exc_info=True)
+            await asyncio.sleep(CHECK_INTERVAL_SECS)
+
+    # ── scheduling ──────────────────────────────────────────────────────────
+
+    async def _get_config(self) -> dict:
+        async with async_session() as session:
+            rows = (await session.execute(select(AppSettings))).scalars().all()
+        cfg = {s.key: s.value for s in rows}
+
+        def _int(key: str, default: int, lo: int, hi: int) -> int:
+            try:
+                val = int(cfg.get(key, ""))
+                return val if lo <= val <= hi else default
+            except (ValueError, TypeError):
+                return default
+
+        return {
+            "enabled": cfg.get("weekly_report_enabled", "true").lower() != "false",
+            "day": _int("weekly_report_day", DEFAULT_DAY, 0, 6),
+            "hour": _int("weekly_report_hour", DEFAULT_HOUR, 0, 23),
+            "last_sent": cfg.get("weekly_report_last_sent", ""),
+        }
+
+    def _now_local(self) -> datetime:
+        try:
+            return datetime.now(ZoneInfo(DEFAULT_TZ))
+        except Exception:
+            # tz database unavailable in the container — fall back to UTC
+            return datetime.now(timezone.utc)
+
+    async def _is_due(self) -> bool:
+        cfg = await self._get_config()
+        if not cfg["enabled"]:
+            return False
+
+        now = self._now_local()
+        if now.weekday() != cfg["day"] or now.hour < cfg["hour"]:
+            return False
+
+        # Already sent today?
+        return cfg["last_sent"] != now.date().isoformat()
+
+    async def _mark_sent(self):
+        today = self._now_local().date().isoformat()
+        async with async_session() as session:
+            result = await session.execute(
+                select(AppSettings).where(AppSettings.key == "weekly_report_last_sent")
+            )
+            setting = result.scalar_one_or_none()
+            if setting:
+                setting.value = today
+            else:
+                session.add(AppSettings(key="weekly_report_last_sent", value=today))
+            await session.commit()
+
+    # ── report generation ─────────────────────────────────────────────────────
 
     async def generate_and_send(self):
         """Generate the weekly report and send it via Telegram."""
