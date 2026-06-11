@@ -15,6 +15,7 @@ from sqlalchemy import select
 
 from app.database import async_session
 from app.models.printer import Printer
+from app.models.print_job import PrintJob
 from app.services.assistant.registry import tool_registry
 from app.services.dispatcher import dispatcher
 from app.services.moonraker import moonraker_manager
@@ -65,6 +66,40 @@ async def _find_printer(session, query: str) -> Optional[Printer]:
     return None
 
 
+async def _find_jobs(session, query: str, statuses: list[str]) -> list[PrintJob]:
+    """Resolve queue jobs matching a loose name the user spoke/typed.
+
+    Searches only within `statuses`. Returns every candidate so the caller can
+    disambiguate (ask the user) when more than one matches, instead of guessing.
+    Tries, in order: exact name, substring (either direction), token overlap —
+    and stops at the first tier that yields any match.
+    """
+    jobs = (
+        await session.execute(
+            select(PrintJob).where(PrintJob.status.in_(statuses)).order_by(PrintJob.id)
+        )
+    ).scalars().all()
+    if not query:
+        return []
+    q = query.strip().lower()
+
+    def names(j: PrintJob) -> list[str]:
+        return [n.lower() for n in (j.name, j.gcode_original_name) if n]
+
+    exact = [j for j in jobs if any(n == q for n in names(j))]
+    if exact:
+        return exact
+    substr = [j for j in jobs if any(q in n or n in q for n in names(j))]
+    if substr:
+        return substr
+    q_tokens = set(q.replace("-", " ").replace("_", " ").split())
+    token = [
+        j for j in jobs
+        if q_tokens & set(" ".join(names(j)).replace("-", " ").replace("_", " ").split())
+    ]
+    return token
+
+
 def _label(status: str) -> str:
     return STATUS_LABELS.get(status, status)
 
@@ -75,6 +110,13 @@ async def _broadcast(printer: Printer) -> None:
         await ws_hub.broadcast_queue_update()
     except Exception:  # noqa: BLE001 — broadcasting must never break an action
         logger.debug("ws broadcast failed after action", exc_info=True)
+
+
+async def _broadcast_queue() -> None:
+    try:
+        await ws_hub.broadcast_queue_update()
+    except Exception:  # noqa: BLE001 — broadcasting must never break an action
+        logger.debug("ws queue broadcast failed after action", exc_info=True)
 
 
 @tool_registry.register(
@@ -138,6 +180,86 @@ async def despachar_trabajo(impresora: str) -> dict[str, Any]:
         "ok": True,
         "impresora": name,
         "resultado": "Trabajo enviado." if dispatched else "No hay trabajos compatibles en la cola.",
+    }
+
+
+JOB_ARG = {
+    "type": "object",
+    "properties": {
+        "trabajo": {
+            "type": "string",
+            "description": (
+                "Nombre del trabajo de la cola o de su archivo gcode, ej. "
+                "'soporte monitor' o 'pieza_v2.gcode'."
+            ),
+        }
+    },
+    "required": ["trabajo"],
+}
+
+
+@tool_registry.register(
+    name="pausar_trabajo",
+    description=(
+        "Pone EN PAUSA un trabajo PENDIENTE de la cola para que no se despache a "
+        "ninguna impresora hasta que se reanude. No afecta impresiones en curso "
+        "(para eso está 'pausar_impresion'). Identificá el trabajo por su nombre."
+    ),
+    parameters=JOB_ARG,
+    is_action=True,
+    domain=DOMAIN,
+)
+async def pausar_trabajo(trabajo: str) -> dict[str, Any]:
+    async with async_session() as session:
+        matches = await _find_jobs(session, trabajo, ["pending"])
+        if not matches:
+            return {"error": f"No encontré ningún trabajo pendiente que coincida con '{trabajo}'."}
+        if len(matches) > 1:
+            return {
+                "ambiguo": True,
+                "mensaje": "Hay varios trabajos pendientes que coinciden; especificá cuál.",
+                "candidatos": [m.name for m in matches],
+            }
+        job = matches[0]
+        job.status = "paused"
+        name = job.name
+        await session.commit()
+    await _broadcast_queue()
+    return {"ok": True, "trabajo": name, "resultado": "Trabajo puesto en pausa. No se despachará hasta reanudarlo."}
+
+
+@tool_registry.register(
+    name="reanudar_trabajo",
+    description=(
+        "Saca de pausa un trabajo de la cola que estaba EN PAUSA: lo vuelve a poner "
+        "pendiente y dispara el despacho normal (busca una impresora compatible "
+        "libre). Identificá el trabajo por su nombre."
+    ),
+    parameters=JOB_ARG,
+    is_action=True,
+    domain=DOMAIN,
+)
+async def reanudar_trabajo(trabajo: str) -> dict[str, Any]:
+    async with async_session() as session:
+        matches = await _find_jobs(session, trabajo, ["paused"])
+        if not matches:
+            return {"error": f"No encontré ningún trabajo en pausa que coincida con '{trabajo}'."}
+        if len(matches) > 1:
+            return {
+                "ambiguo": True,
+                "mensaje": "Hay varios trabajos en pausa que coinciden; especificá cuál.",
+                "candidatos": [m.name for m in matches],
+            }
+        job = matches[0]
+        job.status = "pending"
+        name = job.name
+        await session.commit()
+    await _broadcast_queue()
+    dispatched = await dispatcher.try_dispatch_all()
+    return {
+        "ok": True,
+        "trabajo": name,
+        "resultado": "Trabajo reanudado y vuelto a la cola. Se intentó despacharlo a una impresora compatible.",
     }
 
 

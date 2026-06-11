@@ -137,9 +137,10 @@ async def listar_bobinas() -> dict[str, Any]:
 @tool_registry.register(
     name="ver_cola",
     description=(
-        "Devuelve la cola de trabajos de impresión: lo que está pendiente y lo que "
-        "se está imprimiendo, con material, color, copias y prioridad. Usar para "
-        "preguntas sobre qué hay encolado o cuántos trabajos faltan."
+        "Devuelve la cola de trabajos de impresión: lo pendiente, lo que se está "
+        "imprimiendo y lo que está EN PAUSA (no se despacha hasta reanudarlo), con "
+        "material, color, copias y prioridad. Usar para preguntas sobre qué hay "
+        "encolado, cuántos trabajos faltan o qué está pausado."
     ),
     domain=DOMAIN,
 )
@@ -151,16 +152,17 @@ async def ver_cola() -> dict[str, Any]:
         }
         result = await session.execute(
             select(PrintJob)
-            .where(PrintJob.status.in_(["pending", "printing"]))
+            .where(PrintJob.status.in_(["pending", "printing", "paused"]))
             .order_by(PrintJob.status, PrintJob.priority.desc(), PrintJob.created_at)
         )
         jobs = result.scalars().all()
 
+    job_status_labels = {"printing": "imprimiendo", "paused": "en pausa", "pending": "pendiente"}
     out: list[dict[str, Any]] = []
     for j in jobs:
         out.append({
             "nombre": j.name,
-            "estado": "imprimiendo" if j.status == "printing" else "pendiente",
+            "estado": job_status_labels.get(j.status, j.status),
             "material": j.required_material,
             "color": j.required_color,
             "copias": f"{j.copies_completed}/{j.copies}",
@@ -168,7 +170,8 @@ async def ver_cola() -> dict[str, Any]:
             "impresora": printers.get(j.assigned_printer_id) if j.assigned_printer_id else None,
         })
     pendientes = sum(1 for j in jobs if j.status == "pending")
-    return {"total_en_cola": len(out), "pendientes": pendientes, "trabajos": out}
+    pausados = sum(1 for j in jobs if j.status == "paused")
+    return {"total_en_cola": len(out), "pendientes": pendientes, "en_pausa": pausados, "trabajos": out}
 
 
 @tool_registry.register(
