@@ -144,6 +144,10 @@ export const api = {
     apiFetch<void>(`/api/queue/${id}`, { method: "DELETE" }),
   requeueJob: (id: number) =>
     apiFetch<any>(`/api/queue/${id}/requeue`, { method: "POST" }),
+  pauseJob: (id: number) =>
+    apiFetch<any>(`/api/queue/${id}/pause`, { method: "POST" }),
+  resumeJob: (id: number) =>
+    apiFetch<any>(`/api/queue/${id}/resume`, { method: "POST" }),
   reorderQueue: (items: { id: number; priority: number }[]) =>
     apiFetch<any>("/api/queue/reorder", {
       method: "PUT",
