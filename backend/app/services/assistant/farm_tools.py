@@ -10,13 +10,14 @@ the plumbing already supports them.
 """
 
 import logging
+from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
 
 from app.database import async_session
 from app.models.maintenance import MaintenanceRecord
-from app.models.print_job import PrintJob
+from app.models.print_job import PrintHistory, PrintJob
 from app.models.printer import Printer
 from app.services.assistant.registry import tool_registry
 from app.services.spoolman import spoolman_client
@@ -33,6 +34,12 @@ STATUS_LABELS = {
     "paused": "pausada",
     "error": "con error",
     "offline": "desconectada",
+}
+
+RESULT_LABELS = {
+    "success": "exitosa",
+    "failed": "fallida",
+    "cancelled": "cancelada",
 }
 
 MAINT_LABELS = {
@@ -202,3 +209,93 @@ async def alertas_mantenimiento() -> dict[str, Any]:
         return {"alertas": [], "resumen": "Todas las impresoras están al día con el mantenimiento."}
     vencidas = sum(1 for a in alertas if a["vencida"])
     return {"total_alertas": len(alertas), "vencidas": vencidas, "alertas": alertas}
+
+
+@tool_registry.register(
+    name="ver_historial",
+    description=(
+        "Devuelve el historial de impresiones ya terminadas (exitosas, fallidas o "
+        "canceladas) de los últimos N días, con un resumen agregado (cantidad total, "
+        "cuántas salieron bien o mal, horas de impresión y gramos de filamento "
+        "consumidos, y desglose por impresora y por material) más el detalle de cada "
+        "impresión. Usar para preguntas sobre qué se imprimió, resúmenes de la semana "
+        "o del día, cuánto se produjo, cuántas fallaron o cuánto filamento se gastó."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "dias": {
+                "type": "integer",
+                "description": (
+                    "Cuántos días hacia atrás incluir. 1 = hoy/ayer, 7 = última "
+                    "semana, 30 = último mes. Por defecto 7."
+                ),
+            },
+        },
+    },
+    domain=DOMAIN,
+)
+async def ver_historial(dias: int = 7) -> dict[str, Any]:
+    try:
+        dias = int(dias)
+    except (TypeError, ValueError):
+        dias = 7
+    dias = max(1, min(dias, 365))
+    # PrintHistory timestamps are stored as naive UTC (DateTime sin tz).
+    cutoff = datetime.utcnow() - timedelta(days=dias)
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(PrintHistory)
+            .where(PrintHistory.completed_at >= cutoff)
+            .order_by(PrintHistory.completed_at.desc())
+        )
+        records = result.scalars().all()
+
+    if not records:
+        return {
+            "periodo_dias": dias,
+            "total": 0,
+            "resumen": f"No hay impresiones registradas en los últimos {dias} días.",
+        }
+
+    por_resultado: dict[str, int] = {}
+    por_impresora: dict[str, int] = {}
+    por_material: dict[str, int] = {}
+    total_segundos = 0
+    total_gramos = 0.0
+
+    detalle: list[dict[str, Any]] = []
+    for r in records:
+        por_resultado[r.result] = por_resultado.get(r.result, 0) + 1
+        if r.printer_name:
+            por_impresora[r.printer_name] = por_impresora.get(r.printer_name, 0) + 1
+        if r.material:
+            por_material[r.material] = por_material.get(r.material, 0) + 1
+        if r.duration_secs:
+            total_segundos += int(r.duration_secs)
+        if r.estimated_weight_g:
+            total_gramos += float(r.estimated_weight_g)
+        detalle.append({
+            "trabajo": r.job_name or r.gcode_filename,
+            "impresora": r.printer_name or f"#{r.printer_id}",
+            "material": r.material or "?",
+            "color": r.required_color,
+            "resultado": RESULT_LABELS.get(r.result, r.result),
+            "duracion": _fmt_duration(r.duration_secs),
+            "gramos": round(r.estimated_weight_g, 1) if r.estimated_weight_g else None,
+            "terminada": r.completed_at.isoformat() if r.completed_at else None,
+        })
+
+    return {
+        "periodo_dias": dias,
+        "total": len(records),
+        "por_resultado": {
+            RESULT_LABELS.get(k, k): v for k, v in por_resultado.items()
+        },
+        "por_impresora": por_impresora,
+        "por_material": por_material,
+        "horas_impresion_total": round(total_segundos / 3600, 1) if total_segundos else 0,
+        "gramos_filamento_total": round(total_gramos, 1) if total_gramos else 0,
+        "impresiones": detalle,
+    }
