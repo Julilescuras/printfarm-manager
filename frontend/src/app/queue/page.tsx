@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   Plus,
   Upload,
@@ -8,6 +8,7 @@ import {
   Printer,
   ArrowUp,
   ArrowDown,
+  ArrowUpDown,
   RotateCcw,
   Trash2,
   FileCode,
@@ -36,6 +37,22 @@ const STATUS_LABELS: Record<string, string> = {
 
 const NOZZLES = [0.2, 0.4, 0.6, 0.8];
 
+// Sort options for the card-based tabs (Pendientes/En Impresión/etc.).
+const CARD_SORT_OPTIONS: { key: string; label: string; dir: SortDir }[] = [
+  { key: "priority", label: "Prioridad", dir: "desc" },
+  { key: "name", label: "Nombre", dir: "asc" },
+  { key: "duration", label: "Duración est.", dir: "desc" },
+  { key: "weight", label: "Peso est.", dir: "desc" },
+  { key: "material", label: "Material", dir: "asc" },
+];
+const CARD_ACCESSORS: Record<string, (j: PrintJob) => any> = {
+  priority: (j) => j.priority,
+  name: (j) => j.name,
+  duration: (j) => (j as any).estimated_time_secs,
+  weight: (j) => (j as any).estimated_weight_g,
+  material: (j) => j.required_material,
+};
+
 function formatDuration(secs: number | null | undefined): string {
   if (!secs) return "-";
   const h = Math.floor(secs / 3600);
@@ -50,6 +67,115 @@ function formatWeight(g: number | null | undefined): string {
   return `${g.toFixed(0)}g`;
 }
 
+// ─── Sorting helpers ───
+type SortDir = "asc" | "desc";
+
+// Generic comparator: numbers numerically, ISO dates chronologically, strings
+// alphabetically (locale-aware). Null/undefined always sink to the bottom,
+// regardless of direction, so empty cells never crowd the top.
+function compareValues(a: any, b: any, dir: SortDir): number {
+  const aEmpty = a === null || a === undefined || a === "";
+  const bEmpty = b === null || b === undefined || b === "";
+  if (aEmpty && bEmpty) return 0;
+  if (aEmpty) return 1;
+  if (bEmpty) return -1;
+
+  let cmp: number;
+  if (typeof a === "number" && typeof b === "number") {
+    cmp = a - b;
+  } else {
+    cmp = String(a).localeCompare(String(b), "es", { numeric: true, sensitivity: "base" });
+  }
+  return dir === "asc" ? cmp : -cmp;
+}
+
+function useSort<T>(
+  items: T[],
+  accessors: Record<string, (item: T) => any>,
+  initialKey: string | null = null,
+  initialDir: SortDir = "desc",
+) {
+  const [sortKey, setSortKey] = useState<string | null>(initialKey);
+  const [sortDir, setSortDir] = useState<SortDir>(initialDir);
+
+  const toggle = (key: string) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("desc");
+    }
+  };
+
+  const sorted = useMemo(() => {
+    if (!sortKey || !accessors[sortKey]) return items;
+    const acc = accessors[sortKey];
+    return [...items].sort((a, b) => compareValues(acc(a), acc(b), sortDir));
+  }, [items, sortKey, sortDir, accessors]);
+
+  return { sorted, sortKey, sortDir, toggle };
+}
+
+// Clickable table header that shows the active sort direction.
+function SortHeader({
+  label,
+  sortKey,
+  activeKey,
+  dir,
+  onSort,
+  align = "left",
+}: {
+  label: string;
+  sortKey: string;
+  activeKey: string | null;
+  dir: SortDir;
+  onSort: (key: string) => void;
+  align?: "left" | "center" | "right";
+}) {
+  const active = activeKey === sortKey;
+  const justify =
+    align === "center" ? "justify-center" : align === "right" ? "justify-end" : "justify-start";
+  return (
+    <th className="p-3 font-medium">
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className={`flex items-center gap-1 w-full ${justify} select-none hover:text-foreground transition-colors ${
+          active ? "text-foreground" : ""
+        }`}
+      >
+        {label}
+        {active ? (
+          dir === "asc" ? (
+            <ArrowUp className="w-3 h-3" />
+          ) : (
+            <ArrowDown className="w-3 h-3" />
+          )
+        ) : (
+          <ArrowUpDown className="w-3 h-3 opacity-30" />
+        )}
+      </button>
+    </th>
+  );
+}
+
+// Resolve a friendly filament name from the loaded Spoolman list, matching by id
+// first (robust) and color+material second (legacy fallback).
+function resolveFilamentName(
+  filaments: any[],
+  filamentId: number | null | undefined,
+  color: string | null | undefined,
+  material: string | null | undefined,
+): string | null {
+  const f =
+    filamentId != null
+      ? filaments.find((x) => x.id === filamentId)
+      : filaments.find(
+          (x) => `#${x.color_hex}` === color && x.material === material,
+        );
+  return f?.name || null;
+}
+
 export default function QueuePage() {
   const [jobs, setJobs] = useState<PrintJob[]>([]);
   const [history, setHistory] = useState<any[]>([]);
@@ -59,6 +185,8 @@ export default function QueuePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [filaments, setFilaments] = useState<any[]>([]);
   const [printerModels, setPrinterModels] = useState<string[]>([]);
+  const [search, setSearch] = useState("");
+  const [cardSort, setCardSort] = useState<string>("priority");
   const { printers } = useWSContext();
 
   const fetchJobs = useCallback(async () => {
@@ -169,6 +297,28 @@ export default function QueuePage() {
     }
   };
 
+  // Filter (search) the card-tab jobs by name, gcode, material or filament.
+  const searchedJobs = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return jobs;
+    return jobs.filter((j) => {
+      const fname =
+        resolveFilamentName(filaments, j.required_filament_id, j.required_color, j.required_material) || "";
+      return `${j.name} ${j.gcode_original_name} ${j.required_material} ${fname}`
+        .toLowerCase()
+        .includes(q);
+    });
+  }, [jobs, search, filaments]);
+
+  // Sort the card-tab jobs. Pendientes keeps its manual drag order untouched.
+  const visibleJobs = useMemo(() => {
+    if (activeTab === "pending") return searchedJobs;
+    const acc = CARD_ACCESSORS[cardSort];
+    if (!acc) return searchedJobs;
+    const dir = CARD_SORT_OPTIONS.find((o) => o.key === cardSort)?.dir ?? "desc";
+    return [...searchedJobs].sort((a, b) => compareValues(acc(a), acc(b), dir));
+  }, [searchedJobs, activeTab, cardSort]);
+
   const tabs = [
     { key: "pending", label: "Pendientes" },
     { key: "printing", label: "En Impresión" },
@@ -214,15 +364,53 @@ export default function QueuePage() {
         ))}
       </div>
 
+      {/* Toolbar: search (all tabs) + sort selector (card tabs only) */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por nombre, archivo, material o filamento…"
+            className="w-full pl-9 pr-3 py-2 rounded-lg bg-secondary border border-border focus:border-primary outline-none text-sm"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground"
+              title="Limpiar"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+        {activeTab !== "history" && activeTab !== "pending" && (
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-xs text-muted-foreground">Ordenar:</span>
+            <select
+              value={cardSort}
+              onChange={(e) => setCardSort(e.target.value)}
+              className="px-3 py-2 rounded-lg bg-secondary border border-border focus:border-primary outline-none text-sm"
+            >
+              {CARD_SORT_OPTIONS.map((o) => (
+                <option key={o.key} value={o.key}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+
       {/* History Tab */}
       {activeTab === "history" ? (
-        <HistoryTable history={history} onClone={handleCloneFromHistory} />
+        <HistoryTable history={history} filaments={filaments} search={search} onClone={handleCloneFromHistory} />
       ) : (
         /* Job List */
         <div className="space-y-3">
           {activeTab === "pending" ? (
             <DragDropJobList
-              jobs={jobs}
+              jobs={visibleJobs}
               filaments={filaments}
               onEdit={(job) => setEditingJob(job)}
               onCancel={handleCancel}
@@ -231,7 +419,7 @@ export default function QueuePage() {
               onClone={handleClone}
             />
           ) : (
-            jobs.map((job) => (
+            visibleJobs.map((job) => (
               <JobCard
                 key={job.id}
                 job={job}
@@ -243,12 +431,13 @@ export default function QueuePage() {
               />
             ))
           )}
-          {jobs.length === 0 && !isLoading && activeTab !== "history" && (
+          {visibleJobs.length === 0 && !isLoading && activeTab !== "history" && (
             <div className="glass-card p-12 text-center">
               <div className="text-4xl mb-3">📋</div>
               <p className="text-muted-foreground">
-                No hay trabajos{" "}
-                {activeTab === "pending" ? "pendientes" : `con estado "${activeTab}"`}
+                {search
+                  ? "Ningún trabajo coincide con la búsqueda"
+                  : `No hay trabajos ${activeTab === "pending" ? "pendientes" : `con estado "${activeTab}"`}`}
               </p>
             </div>
           )}
@@ -283,9 +472,45 @@ export default function QueuePage() {
 }
 
 // ─── History Table ───
-function HistoryTable({ history, onClone }: { history: any[]; onClone: (historyId: number, copies: number) => void }) {
+function HistoryTable({
+  history,
+  filaments,
+  search,
+  onClone,
+}: {
+  history: any[];
+  filaments: any[];
+  search: string;
+  onClone: (historyId: number, copies: number) => void;
+}) {
   const [cloningId, setCloningId] = useState<number | null>(null);
   const [cloneCopies, setCloneCopies] = useState(1);
+
+  // Filter by the shared search box (job, printer, material, filament).
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return history;
+    return history.filter((e) => {
+      const fname =
+        resolveFilamentName(filaments, e.required_filament_id, e.required_color, e.material) || "";
+      return `${e.job_name || ""} ${e.gcode_filename || ""} ${e.printer_name || ""} ${e.material || ""} ${fname}`
+        .toLowerCase()
+        .includes(q);
+    });
+  }, [history, search, filaments]);
+
+  const accessors: Record<string, (e: any) => any> = {
+    job: (e) => e.job_name || e.gcode_filename,
+    printer: (e) => e.printer_name || `#${e.printer_id}`,
+    material: (e) => e.material,
+    nozzle: (e) => e.required_nozzle,
+    filament: (e) => resolveFilamentName(filaments, e.required_filament_id, e.required_color, e.material) || e.required_color,
+    duration: (e) => e.duration_secs,
+    started: (e) => e.started_at,
+    completed: (e) => e.completed_at,
+    result: (e) => e.result,
+  };
+  const { sorted, sortKey, sortDir, toggle } = useSort(filtered, accessors, "completed", "desc");
 
   if (history.length === 0) {
     return (
@@ -310,24 +535,56 @@ function HistoryTable({ history, onClone }: { history: any[]; onClone: (historyI
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left text-muted-foreground">
-              <th className="p-3 font-medium">Trabajo</th>
-              <th className="p-3 font-medium">Impresora</th>
-              <th className="p-3 font-medium">Material</th>
-              <th className="p-3 font-medium">Filamento</th>
-              <th className="p-3 font-medium">Duración</th>
-              <th className="p-3 font-medium">Iniciado</th>
-              <th className="p-3 font-medium">Completado</th>
-              <th className="p-3 font-medium">Resultado</th>
+              <SortHeader label="Trabajo" sortKey="job" activeKey={sortKey} dir={sortDir} onSort={toggle} />
+              <SortHeader label="Impresora" sortKey="printer" activeKey={sortKey} dir={sortDir} onSort={toggle} />
+              <SortHeader label="Material" sortKey="material" activeKey={sortKey} dir={sortDir} onSort={toggle} />
+              <SortHeader label="Boquilla" sortKey="nozzle" activeKey={sortKey} dir={sortDir} onSort={toggle} />
+              <SortHeader label="Filamento" sortKey="filament" activeKey={sortKey} dir={sortDir} onSort={toggle} />
+              <SortHeader label="Duración" sortKey="duration" activeKey={sortKey} dir={sortDir} onSort={toggle} />
+              <SortHeader label="Iniciado" sortKey="started" activeKey={sortKey} dir={sortDir} onSort={toggle} />
+              <SortHeader label="Completado" sortKey="completed" activeKey={sortKey} dir={sortDir} onSort={toggle} />
+              <SortHeader label="Resultado" sortKey="result" activeKey={sortKey} dir={sortDir} onSort={toggle} />
               <th className="p-3 font-medium text-center">Acciones</th>
             </tr>
           </thead>
           <tbody>
-            {history.map((entry) => (
+            {sorted.length === 0 && (
+              <tr>
+                <td colSpan={10} className="p-8 text-center text-muted-foreground">
+                  Ningún registro coincide con la búsqueda
+                </td>
+              </tr>
+            )}
+            {sorted.map((entry) => {
+              const filName = resolveFilamentName(
+                filaments,
+                entry.required_filament_id,
+                entry.required_color,
+                entry.material,
+              );
+              return (
               <tr key={entry.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
                 <td className="p-3 font-medium">{entry.job_name || entry.gcode_filename}</td>
                 <td className="p-3 text-muted-foreground">{entry.printer_name || `#${entry.printer_id}`}</td>
                 <td className="p-3 text-muted-foreground">{entry.material || "-"}</td>
-                <td className="p-3 text-muted-foreground">{formatWeight(entry.estimated_weight_g)}</td>
+                <td className="p-3 text-muted-foreground">
+                  {entry.required_nozzle != null ? `${entry.required_nozzle}mm` : "-"}
+                </td>
+                <td className="p-3 text-muted-foreground">
+                  {filName || entry.required_color ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      {entry.required_color && (
+                        <span
+                          className="w-3 h-3 rounded-full border border-white/20 shrink-0"
+                          style={{ backgroundColor: entry.required_color }}
+                        />
+                      )}
+                      <span className="truncate">{filName || entry.required_color}</span>
+                    </span>
+                  ) : (
+                    "-"
+                  )}
+                </td>
                 <td className="p-3 text-muted-foreground">{formatDuration(entry.duration_secs)}</td>
                 <td className="p-3 text-muted-foreground">
                   {entry.started_at
@@ -403,7 +660,8 @@ function HistoryTable({ history, onClone }: { history: any[]; onClone: (historyI
                   </div>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

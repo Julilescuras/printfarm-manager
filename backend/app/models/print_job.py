@@ -98,6 +98,10 @@ class PrintHistory(Base):
     job_name: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     gcode_filename: Mapped[str] = mapped_column(Text, nullable=False)
     material: Mapped[str] = mapped_column(String(50), nullable=False, default="")
+    # Nozzle + filament snapshot at print time (for display in the history table).
+    required_nozzle: Mapped[float | None] = mapped_column(Float, nullable=True)
+    required_color: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    required_filament_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     estimated_weight_g: Mapped[float | None] = mapped_column(Float, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -116,6 +120,9 @@ class PrintHistory(Base):
             "job_name": self.job_name,
             "gcode_filename": self.gcode_filename,
             "material": self.material,
+            "required_nozzle": self.required_nozzle,
+            "required_color": self.required_color,
+            "required_filament_id": self.required_filament_id,
             "estimated_weight_g": self.estimated_weight_g,
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,

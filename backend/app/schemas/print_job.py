@@ -59,6 +59,9 @@ class PrintHistoryResponse(BaseModel):
     job_name: str
     gcode_filename: str
     material: str
+    required_nozzle: Optional[float] = None
+    required_color: Optional[str] = None
+    required_filament_id: Optional[int] = None
     estimated_weight_g: Optional[float]
     started_at: Optional[datetime]
     completed_at: Optional[datetime]
