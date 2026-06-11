@@ -7,6 +7,7 @@ interface WSContextValue {
   printers: PrinterState[];
   activeAlerts: MaintenanceRecord[];
   isConnected: boolean;
+  isInitialized: boolean;
   refreshState: () => void;
 }
 
@@ -14,6 +15,7 @@ const WSContext = createContext<WSContextValue>({
   printers: [],
   activeAlerts: [],
   isConnected: false,
+  isInitialized: false,
   refreshState: () => {},
 });
 
@@ -25,6 +27,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const [printers, setPrinters] = useState<PrinterState[]>([]);
   const [activeAlerts, setActiveAlerts] = useState<MaintenanceRecord[]>([]);
   const [isConnected, setIsConnected] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // Guards against zombie reconnects after the provider unmounts: once false,
@@ -55,6 +58,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
               const state = msg.data as InitialState;
               setPrinters(state.printers);
               setActiveAlerts(state.active_alerts);
+              setIsInitialized(true);
               break;
             }
             case "printer_update": {
@@ -114,7 +118,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   }, [connect]);
 
   return (
-    <WSContext.Provider value={{ printers, activeAlerts, isConnected, refreshState }}>
+    <WSContext.Provider value={{ printers, activeAlerts, isConnected, isInitialized, refreshState }}>
       {children}
     </WSContext.Provider>
   );
