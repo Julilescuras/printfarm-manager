@@ -25,6 +25,13 @@ from app.services.llm.base import (
 logger = logging.getLogger("printfarm.llm")
 
 
+# Speech-to-text model per provider (Whisper-compatible /audio/transcriptions).
+TRANSCRIBE_MODELS = {
+    "groq": "whisper-large-v3-turbo",
+    "openai": "whisper-1",
+}
+
+
 class OpenAICompatProvider(LLMProvider):
     """Talks to any OpenAI-compatible /chat/completions endpoint."""
 
@@ -145,3 +152,31 @@ class OpenAICompatProvider(LLMProvider):
             )
 
         return self._decode_response(resp.json())
+
+    async def transcribe(self, audio: bytes, filename: str, mime: str = "audio/ogg") -> str:
+        """Transcribe audio via the OpenAI-compatible /audio/transcriptions endpoint
+        (Whisper). Works with Groq and OpenAI."""
+        model = TRANSCRIBE_MODELS.get(self.name)
+        if not model:
+            raise LLMProviderError(
+                f"El motor '{self.name}' no soporta mensajes de voz. Usá Groq u OpenAI."
+            )
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        files = {"file": (filename, audio, mime)}
+        data = {"model": model, "language": "es"}
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                resp = await client.post(
+                    f"{self.base_url}/audio/transcriptions",
+                    headers=headers,
+                    files=files,
+                    data=data,
+                )
+        except httpx.HTTPError as exc:
+            raise LLMProviderError(f"No se pudo transcribir el audio: {exc}") from exc
+
+        if resp.status_code != 200:
+            raise LLMProviderError(
+                f"Error al transcribir ({self.name}) {resp.status_code}: {resp.text[:300]}"
+            )
+        return (resp.json().get("text") or "").strip()
