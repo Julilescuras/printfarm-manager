@@ -45,7 +45,7 @@ class PrintJob(Base):
     # Status tracking
     status: Mapped[str] = mapped_column(
         String(50), default="pending",
-        comment="pending | printing | completed | cancelled"
+        comment="pending | paused | printing | completed | cancelled"
     )
     assigned_printer_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("printers.id"), nullable=True

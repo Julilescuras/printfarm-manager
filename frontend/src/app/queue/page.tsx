@@ -23,6 +23,8 @@ import {
   ChevronDown,
   Check,
   Search,
+  Pause,
+  Play,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { PrintJob } from "@/lib/types";
@@ -30,6 +32,7 @@ import { useWSContext } from "@/providers/websocket-provider";
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "Pendiente",
+  paused: "En pausa",
   printing: "Imprimiendo",
   completed: "Completado",
   cancelled: "Cancelado",
@@ -195,7 +198,10 @@ export default function QueuePage() {
         const data = await api.getHistory(100);
         setHistory(data);
       } else {
-        const data = await api.getQueue(activeTab !== "all" ? activeTab : undefined);
+        // The "Pendientes" tab also shows held (paused) jobs so they can be resumed.
+        const statusFilter =
+          activeTab === "pending" ? "pending,paused" : activeTab !== "all" ? activeTab : undefined;
+        const data = await api.getQueue(statusFilter);
         setJobs(data);
       }
     } catch (error) {
@@ -254,6 +260,26 @@ export default function QueuePage() {
       fetchJobs();
     } catch (error) {
       console.error("Error requeueing job:", error);
+    }
+  };
+
+  const handlePause = async (id: number) => {
+    try {
+      await api.pauseJob(id);
+      fetchJobs();
+    } catch (error: any) {
+      alert(`No se pudo pausar: ${error.message || error}`);
+      console.error("Error pausing job:", error);
+    }
+  };
+
+  const handleResume = async (id: number) => {
+    try {
+      await api.resumeJob(id);
+      fetchJobs();
+    } catch (error: any) {
+      alert(`No se pudo reanudar: ${error.message || error}`);
+      console.error("Error resuming job:", error);
     }
   };
 
@@ -417,6 +443,8 @@ export default function QueuePage() {
               onRequeue={handleRequeue}
               onReorder={handleReorder}
               onClone={handleClone}
+              onPause={handlePause}
+              onResume={handleResume}
             />
           ) : (
             visibleJobs.map((job) => (
@@ -428,6 +456,8 @@ export default function QueuePage() {
                 onCancel={handleCancel}
                 onRequeue={handleRequeue}
                 onClone={handleClone}
+                onPause={handlePause}
+                onResume={handleResume}
               />
             ))
           )}
@@ -679,6 +709,8 @@ function DragDropJobList({
   onRequeue,
   onReorder,
   onClone,
+  onPause,
+  onResume,
 }: {
   jobs: PrintJob[];
   filaments: any[];
@@ -687,6 +719,8 @@ function DragDropJobList({
   onRequeue: (id: number) => void;
   onReorder: (jobs: PrintJob[]) => void;
   onClone: (id: number) => void;
+  onPause: (id: number) => void;
+  onResume: (id: number) => void;
 }) {
   const [localJobs, setLocalJobs] = useState(jobs);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -754,6 +788,8 @@ function DragDropJobList({
             onCancel={onCancel}
             onRequeue={onRequeue}
             onClone={onClone}
+            onPause={onPause}
+            onResume={onResume}
             showGrip
           />
         </div>
@@ -771,6 +807,8 @@ function JobCard({
   onCancel,
   onRequeue,
   onClone,
+  onPause,
+  onResume,
   showGrip = false,
 }: {
   job: PrintJob;
@@ -779,6 +817,8 @@ function JobCard({
   onCancel: (id: number) => void;
   onRequeue: (id: number) => void;
   onClone: (id: number) => void;
+  onPause?: (id: number) => void;
+  onResume?: (id: number) => void;
   showGrip?: boolean;
 }) {
   let models: string[] = [];
@@ -788,6 +828,7 @@ function JobCard({
 
   const statusColors: Record<string, string> = {
     pending: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+    paused: "bg-amber-500/20 text-amber-400 border-amber-500/30",
     printing: "bg-green-500/20 text-green-400 border-green-500/30",
     completed: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
     cancelled: "bg-red-500/20 text-red-400 border-red-500/30",
@@ -875,13 +916,33 @@ function JobCard({
 
       {/* Actions */}
       <div className="flex gap-2 shrink-0">
-        {job.status === "pending" && (
+        {(job.status === "pending" || job.status === "paused") && (
           <button
             onClick={onEdit}
             className="p-2 rounded-lg hover:bg-primary/20 text-muted-foreground hover:text-primary transition-colors"
             title="Editar"
           >
             <Pencil className="w-4 h-4" />
+          </button>
+        )}
+        {/* Pausar — frena el despacho aunque haya una impresora libre */}
+        {job.status === "pending" && onPause && (
+          <button
+            onClick={() => onPause(job.id)}
+            className="p-2 rounded-lg hover:bg-amber-500/20 text-muted-foreground hover:text-amber-400 transition-colors"
+            title="Pausar (no despachar hasta reanudar)"
+          >
+            <Pause className="w-4 h-4" />
+          </button>
+        )}
+        {/* Reanudar — vuelve al despacho normal */}
+        {job.status === "paused" && onResume && (
+          <button
+            onClick={() => onResume(job.id)}
+            className="p-2 rounded-lg hover:bg-green-500/20 text-muted-foreground hover:text-green-400 transition-colors"
+            title="Reanudar (volver a la cola)"
+          >
+            <Play className="w-4 h-4" />
           </button>
         )}
         {/* Duplicar — disponible en todos los estados */}
@@ -892,7 +953,7 @@ function JobCard({
         >
           <Copy className="w-4 h-4" />
         </button>
-        {job.status === "pending" && (
+        {(job.status === "pending" || job.status === "paused") && (
           <button
             onClick={() => onCancel(job.id)}
             className="p-2 rounded-lg hover:bg-red-500/20 text-muted-foreground hover:text-red-400 transition-colors"
@@ -1046,6 +1107,7 @@ function AddJobModal({
   const [filamentId, setFilamentId] = useState<number | null>(null);
   const [copies, setCopies] = useState(1);
   const [priority, setPriority] = useState(0);
+  const [paused, setPaused] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [dragActive, setDragActive] = useState(false);
@@ -1113,6 +1175,7 @@ function AddJobModal({
       if (filamentId != null) formData.append("required_filament_id", String(filamentId));
       formData.append("copies", copies.toString());
       formData.append("priority", priority.toString());
+      if (paused) formData.append("paused", "true");
       formData.append("gcode", file);
 
       await api.addJob(formData);
@@ -1273,13 +1336,33 @@ function AddJobModal({
             </div>
           </div>
 
+          {/* Crear en pausa */}
+          <label className="flex items-start gap-3 p-3 rounded-lg bg-secondary/50 border border-border cursor-pointer">
+            <input
+              type="checkbox"
+              checked={paused}
+              onChange={(e) => setPaused(e.target.checked)}
+              className="mt-0.5 w-4 h-4 accent-amber-500"
+            />
+            <div>
+              <span className="text-sm font-medium flex items-center gap-1.5">
+                <Pause className="w-3.5 h-3.5 text-amber-400" />
+                Crear en pausa
+              </span>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                No se despacha aunque haya una impresora compatible libre. Lo reanudás
+                a mano desde la pestaña Pendientes y ahí entra al despacho normal.
+              </p>
+            </div>
+          </label>
+
           {/* Submit */}
           <button
             type="submit"
             disabled={isSubmitting || !file || !name || selectedModels.length === 0}
             className="w-full py-3 rounded-lg bg-primary text-primary-foreground font-semibold transition-all hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isSubmitting ? "Agregando..." : "Agregar a la Cola"}
+            {isSubmitting ? "Agregando..." : paused ? "Agregar en pausa" : "Agregar a la Cola"}
           </button>
         </form>
       </div>
