@@ -36,6 +36,7 @@ export default function SettingsPage() {
 
   // ── Assistant (conversational agent) state ────────────────────────────────
   const [assistantEnabled, setAssistantEnabled] = useState(false);
+  const [assistantReplyAll, setAssistantReplyAll] = useState(false);
   const [assistantProvider, setAssistantProvider] = useState("gemini");
   const [assistantApiKey, setAssistantApiKey] = useState("");
   const [assistantModel, setAssistantModel] = useState("");
@@ -72,6 +73,7 @@ export default function SettingsPage() {
       setTelegramEnabled(data.telegram_enabled === "true");
       setMaintBlockDispatch(data.maintenance_block_dispatch === "true");
       setAssistantEnabled(data.assistant_enabled === "true");
+      setAssistantReplyAll(data.assistant_reply_all === "true");
       setAssistantProvider(data.assistant_provider || "gemini");
       setAssistantApiKey(data.assistant_api_key || "");
       setAssistantModel(data.assistant_model || "");
@@ -92,6 +94,7 @@ export default function SettingsPage() {
         telegram_enabled: telegramEnabled ? "true" : "false",
         maintenance_block_dispatch: maintBlockDispatch ? "true" : "false",
         assistant_enabled: assistantEnabled ? "true" : "false",
+        assistant_reply_all: assistantReplyAll ? "true" : "false",
         assistant_provider: assistantProvider,
         assistant_api_key: assistantApiKey,
         assistant_model: assistantModel,
@@ -568,6 +571,32 @@ export default function SettingsPage() {
           </button>
         </div>
 
+        {/* Reply-all Toggle */}
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-medium">Responder sin comando</p>
+            <p className="text-sm text-muted-foreground">
+              {assistantReplyAll
+                ? "Responde a cualquier mensaje del grupo (ignora a otros bots y sus propias notificaciones)."
+                : "Solo responde con /pregunta, mención (@bot) o respondiendo a un mensaje del bot."}
+            </p>
+          </div>
+          <button
+            onClick={() => setAssistantReplyAll(!assistantReplyAll)}
+            className="relative w-14 min-w-[3.5rem] h-7 rounded-full transition-colors duration-300 focus:outline-none shrink-0"
+            style={{
+              backgroundColor: assistantReplyAll ? "hsl(var(--primary))" : "hsl(var(--muted))",
+            }}
+          >
+            <span
+              className="absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-md transition-transform duration-300"
+              style={{
+                transform: assistantReplyAll ? "translateX(28px)" : "translateX(0px)",
+              }}
+            />
+          </button>
+        </div>
+
         {/* Provider selector */}
         <div>
           <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
@@ -693,8 +722,9 @@ export default function SettingsPage() {
               <em>«¿cuánto le queda a la bobina negra?»</em> · <em>«¿qué hay en la cola?»</em>
             </li>
             <li>
-              Para que responda a cualquier mensaje sin comando, desactivá el{" "}
-              <em>privacy mode</em> del bot en{" "}
+              <strong>Para responder sin comando:</strong> activá arriba el toggle
+              «Responder sin comando» y, además, desactivá el <em>privacy mode</em>{" "}
+              escribiéndole a{" "}
               <a
                 href="https://t.me/BotFather"
                 target="_blank"
@@ -703,7 +733,11 @@ export default function SettingsPage() {
               >
                 @BotFather <ExternalLink className="w-3 h-3" />
               </a>{" "}
-              (<code className="bg-secondary px-1 rounded">/setprivacy → Disable</code>).
+              (<code className="bg-secondary px-1 rounded">/setprivacy</code> → elegí tu
+              bot → <strong>Disable</strong>). Por un límite de Telegram, con el privacy
+              mode activo el bot no recibe los mensajes normales del grupo. Después de
+              cambiarlo, <strong>sacá y volvé a agregar el bot al grupo</strong> para que
+              tome efecto.
             </li>
           </ul>
         </div>
