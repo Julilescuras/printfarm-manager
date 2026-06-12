@@ -85,6 +85,7 @@ class TelegramListener:
             "require_pin": cfg.get("assistant_require_pin", "true").lower() == "true",
             "action_pin": cfg.get("assistant_action_pin", "") or "",
             "authorized_ids": _parse_ids(cfg.get("assistant_authorized_user_ids", "")),
+            "require_confirmation": cfg.get("assistant_require_confirmation", "true").lower() != "false",
         }
 
     # ── main loop ───────────────────────────────────────────────────────────
@@ -308,7 +309,10 @@ class TelegramListener:
         await self._api(token, "sendChatAction", {"chat_id": chat_key, "action": "typing"})
 
         history = conversation_store.history(chat_key)
-        answer = await assistant.ask(question, actor=actor, history=history)
+        answer = await assistant.ask(
+            question, actor=actor, history=history,
+            require_confirmation=cfg["require_confirmation"],
+        )
 
         # Record the turn so follow-ups and confirmations have context.
         conversation_store.add(chat_key, "user", f"{name}: {question}")

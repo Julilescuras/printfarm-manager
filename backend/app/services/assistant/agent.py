@@ -35,7 +35,13 @@ herramientas. Nunca inventes números ni estados.
 - Usá emojis con moderación cuando ayuden (🖨️ 🧵 ⏳ ⚠️ ✅).
 """
 
-ACTIONS_ALLOWED_NOTE = """\
+_ACTIONS_ALLOWED_BASE = """\
+Acciones (modifican impresoras): el usuario actual ESTÁ habilitado para ejecutarlas.
+- Si el pedido es ambiguo (no queda claro qué impresora o material), preguntá antes.
+- No reveles ni menciones la clave de acción.
+"""
+
+_ACTIONS_ALLOWED_WITH_CONFIRM = """\
 Acciones (modifican impresoras): el usuario actual ESTÁ habilitado para ejecutarlas.
 - CONFIRMACIÓN OBLIGATORIA: antes de ejecutar CUALQUIER acción, describí en una \
 frase exactamente qué vas a hacer y pedí confirmación. Recién cuando el usuario \
@@ -63,6 +69,7 @@ class Assistant:
         *,
         actor: Optional[Actor] = None,
         history: Optional[list[tuple[str, str]]] = None,
+        require_confirmation: bool = True,
     ) -> str:
         try:
             provider = await get_provider()
@@ -70,7 +77,11 @@ class Assistant:
             return f"⚠️ El asistente no está configurado: {exc}"
 
         can_act = bool(actor and actor.can_act)
-        system = SYSTEM_PROMPT + "\n\n" + (ACTIONS_ALLOWED_NOTE if can_act else ACTIONS_BLOCKED_NOTE)
+        if can_act:
+            actions_note = _ACTIONS_ALLOWED_WITH_CONFIRM if require_confirmation else _ACTIONS_ALLOWED_BASE
+        else:
+            actions_note = ACTIONS_BLOCKED_NOTE
+        system = SYSTEM_PROMPT + "\n\n" + actions_note
 
         messages: list[ChatMessage] = [ChatMessage(role="system", content=system)]
         for role, content in history or []:
