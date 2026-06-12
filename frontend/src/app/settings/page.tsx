@@ -48,6 +48,7 @@ export default function SettingsPage() {
   const [assistantModel, setAssistantModel] = useState("");
   const [assistantActionsEnabled, setAssistantActionsEnabled] = useState(false);
   const [assistantRequirePin, setAssistantRequirePin] = useState(true);
+  const [assistantRequireConfirmation, setAssistantRequireConfirmation] = useState(true);
   const [assistantActionPin, setAssistantActionPin] = useState("");
   const [assistantAuthorizedIds, setAssistantAuthorizedIds] = useState("");
   const [providers, setProviders] = useState<
@@ -92,6 +93,7 @@ export default function SettingsPage() {
       setAssistantModel(data.assistant_model || "");
       setAssistantActionsEnabled(data.assistant_actions_enabled === "true");
       setAssistantRequirePin(data.assistant_require_pin !== "false");
+      setAssistantRequireConfirmation(data.assistant_require_confirmation !== "false");
       setAssistantActionPin(data.assistant_action_pin || "");
       setAssistantAuthorizedIds(data.assistant_authorized_user_ids || "");
     } catch (err) {
@@ -120,6 +122,7 @@ export default function SettingsPage() {
         assistant_model: assistantModel,
         assistant_actions_enabled: assistantActionsEnabled ? "true" : "false",
         assistant_require_pin: assistantRequirePin ? "true" : "false",
+        assistant_require_confirmation: assistantRequireConfirmation ? "true" : "false",
         assistant_action_pin: assistantActionPin,
         assistant_authorized_user_ids: assistantAuthorizedIds,
       });
@@ -844,6 +847,28 @@ export default function SettingsPage() {
                   <span
                     className="absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-md transition-transform duration-300"
                     style={{ transform: assistantRequirePin ? "translateX(28px)" : "translateX(0px)" }}
+                  />
+                </button>
+              </div>
+
+              {/* Require confirmation toggle */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">Pedir confirmación antes de actuar</p>
+                  <p className="text-sm text-muted-foreground">
+                    {assistantRequireConfirmation
+                      ? "El bot describe la acción y espera que confirmes antes de ejecutarla."
+                      : "El bot ejecuta las acciones directamente sin pedir confirmación."}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setAssistantRequireConfirmation(!assistantRequireConfirmation)}
+                  className="relative w-14 min-w-[3.5rem] h-7 rounded-full transition-colors duration-300 focus:outline-none shrink-0"
+                  style={{ backgroundColor: assistantRequireConfirmation ? "hsl(var(--primary))" : "hsl(var(--muted))" }}
+                >
+                  <span
+                    className="absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-md transition-transform duration-300"
+                    style={{ transform: assistantRequireConfirmation ? "translateX(28px)" : "translateX(0px)" }}
                   />
                 </button>
               </div>
