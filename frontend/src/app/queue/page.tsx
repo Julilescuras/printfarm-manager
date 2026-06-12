@@ -70,6 +70,16 @@ function formatWeight(g: number | null | undefined): string {
   return `${g.toFixed(0)}g`;
 }
 
+function formatDate(iso: string | null | undefined): string {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  const dd = d.getDate();
+  const mm = d.getMonth() + 1;
+  const hh = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `${dd}/${mm} ${hh}:${min}`;
+}
+
 // ─── Sorting helpers ───
 type SortDir = "asc" | "desc";
 
@@ -616,26 +626,8 @@ function HistoryTable({
                   )}
                 </td>
                 <td className="p-3 text-muted-foreground">{formatDuration(entry.duration_secs)}</td>
-                <td className="p-3 text-muted-foreground">
-                  {entry.started_at
-                    ? new Date(entry.started_at).toLocaleDateString("es-AR", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })
-                    : "-"}
-                </td>
-                <td className="p-3 text-muted-foreground">
-                  {entry.completed_at
-                    ? new Date(entry.completed_at).toLocaleDateString("es-AR", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })
-                    : "-"}
-                </td>
+                <td className="p-3 text-muted-foreground whitespace-nowrap">{formatDate(entry.started_at)}</td>
+                <td className="p-3 text-muted-foreground whitespace-nowrap">{formatDate(entry.completed_at)}</td>
                 <td className="p-3">
                   {entry.result === "success" ? (
                     <span className="inline-flex items-center gap-1 text-green-400">
