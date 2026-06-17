@@ -11,6 +11,9 @@ import {
   ExternalLink,
   X,
   Video,
+  ChevronDown,
+  ChevronUp,
+  RefreshCw,
 } from "lucide-react";
 import { useWSContext } from "@/providers/websocket-provider";
 import { api } from "@/lib/api";
@@ -26,6 +29,10 @@ export default function PrinterDetailsPage() {
   const [spoolInfo, setSpoolInfo] = useState<any>(null);
   const [isLoadingSpool, setIsLoadingSpool] = useState(false);
   const [isSettingStatus, setIsSettingStatus] = useState(false);
+  const [showSpoolSelector, setShowSpoolSelector] = useState(false);
+  const [availableSpools, setAvailableSpools] = useState<any[]>([]);
+  const [isLoadingSpools, setIsLoadingSpools] = useState(false);
+  const [isAssigningSpool, setIsAssigningSpool] = useState(false);
 
   const printer = printers.find((p) => p.id === printerId);
 
@@ -70,6 +77,37 @@ export default function PrinterDetailsPage() {
       await refreshState();
     } catch {
       alert("Error al desasignar el filamento");
+    }
+  };
+
+  const handleOpenSpoolSelector = async () => {
+    if (showSpoolSelector) {
+      setShowSpoolSelector(false);
+      return;
+    }
+    setShowSpoolSelector(true);
+    setIsLoadingSpools(true);
+    try {
+      const spools = await api.getSpools();
+      setAvailableSpools(spools);
+    } catch {
+      alert("Error al cargar los spools de Spoolman");
+      setShowSpoolSelector(false);
+    } finally {
+      setIsLoadingSpools(false);
+    }
+  };
+
+  const handleAssignSpool = async (spoolId: number) => {
+    setIsAssigningSpool(true);
+    try {
+      await api.assignSpool(printer.id, spoolId);
+      setShowSpoolSelector(false);
+      await refreshState();
+    } catch {
+      alert("Error al asignar el filamento");
+    } finally {
+      setIsAssigningSpool(false);
     }
   };
 
@@ -333,15 +371,28 @@ export default function PrinterDetailsPage() {
             <h2 className="text-lg font-bold flex items-center gap-2">
               <Box className="w-5 h-5 text-primary" /> Filamento Cargado (Spoolman)
             </h2>
-            {printer.current_spool_id && spoolInfo && (
+            <div className="flex items-center gap-2">
+              {printer.current_spool_id && spoolInfo && (
+                <button
+                  onClick={handleUnassignSpool}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-red-400 hover:bg-red-500/10 border border-border hover:border-red-500/30 transition-all"
+                >
+                  <X className="w-3 h-3" />
+                  Desasignar
+                </button>
+              )}
               <button
-                onClick={handleUnassignSpool}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-red-400 hover:bg-red-500/10 border border-border hover:border-red-500/30 transition-all"
+                onClick={handleOpenSpoolSelector}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                  showSpoolSelector
+                    ? "bg-primary/20 text-primary border-primary/40"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary border-border"
+                }`}
               >
-                <X className="w-3 h-3" />
-                Desasignar filamento
+                {showSpoolSelector ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                {printer.current_spool_id ? "Cambiar filamento" : "Asignar filamento"}
               </button>
-            )}
+            </div>
           </div>
 
           {!printer.current_spool_id ? (
@@ -386,6 +437,72 @@ export default function PrinterDetailsPage() {
           ) : (
             <div className="p-4 bg-red-500/10 text-red-400 rounded-lg text-sm">
               No se pudo cargar la información del spool (ID: {printer.current_spool_id})
+            </div>
+          )}
+
+          {/* Spool Selector */}
+          {showSpoolSelector && (
+            <div className="mt-4 border border-border rounded-lg overflow-hidden">
+              <div className="px-4 py-2 bg-secondary/60 border-b border-border flex items-center justify-between">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Seleccionar spool
+                </span>
+                {isLoadingSpools && (
+                  <RefreshCw className="w-3 h-3 text-muted-foreground animate-spin" />
+                )}
+              </div>
+              {isLoadingSpools ? (
+                <div className="p-4 text-sm text-muted-foreground animate-pulse">
+                  Cargando spools de Spoolman...
+                </div>
+              ) : availableSpools.length === 0 ? (
+                <div className="p-4 text-sm text-muted-foreground">
+                  No se encontraron spools en Spoolman.
+                </div>
+              ) : (
+                <div className="divide-y divide-border max-h-72 overflow-y-auto">
+                  {availableSpools.map((spool) => {
+                    const isCurrent = spool.id === printer.current_spool_id;
+                    return (
+                      <button
+                        key={spool.id}
+                        onClick={() => !isCurrent && handleAssignSpool(spool.id)}
+                        disabled={isAssigningSpool || isCurrent}
+                        className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
+                          isCurrent
+                            ? "bg-primary/10 cursor-default"
+                            : "hover:bg-secondary/70 cursor-pointer"
+                        } disabled:opacity-60`}
+                      >
+                        <div
+                          className="w-6 h-6 rounded-full border border-white/20 shrink-0"
+                          style={{ backgroundColor: `#${spool.filament?.color_hex || "888"}` }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-sm">
+                              {spool.filament?.material || "?"} — {spool.filament?.name || "Sin nombre"}
+                            </span>
+                            {isCurrent && (
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/30">
+                                Actual
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-0.5">
+                            {spool.filament?.vendor?.name || "Sin marca"} · #{spool.id}
+                            {spool.remaining_weight != null && (
+                              <span className={spool.remaining_weight < 100 ? " text-amber-400" : ""}>
+                                {" "}· {spool.remaining_weight.toFixed(0)}g restantes
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>
