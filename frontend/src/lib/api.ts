@@ -244,6 +244,40 @@ export const api = {
   testAssistant: () =>
     apiFetch<any>("/api/settings/assistant/test", { method: "POST" }),
 
+  // Assistant tools
+  getAssistantTools: () =>
+    apiFetch<any[]>("/api/settings/assistant/tools"),
+  setToolEnabled: (name: string, enabled: boolean) =>
+    apiFetch<any>(`/api/settings/assistant/tools/${encodeURIComponent(name)}/enabled`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    }),
+  getMaterialTemps: () =>
+    apiFetch<Record<string, { hotend: number; bed: number }>>("/api/settings/assistant/material-temps"),
+  updateMaterialTemps: (temps: Record<string, { hotend: number; bed: number }>) =>
+    apiFetch<any>("/api/settings/assistant/material-temps", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ temps }),
+    }),
+  getCustomTools: () =>
+    apiFetch<any[]>("/api/settings/assistant/custom-tools"),
+  createCustomTool: (data: { name: string; description: string; gcode: string; is_action: boolean; requires_printer: boolean }) =>
+    apiFetch<any>("/api/settings/assistant/custom-tools", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
+  updateCustomTool: (id: number, data: Partial<{ name: string; description: string; gcode: string; is_action: boolean; requires_printer: boolean; enabled: boolean }>) =>
+    apiFetch<any>(`/api/settings/assistant/custom-tools/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
+  deleteCustomTool: (id: number) =>
+    apiFetch<any>(`/api/settings/assistant/custom-tools/${id}`, { method: "DELETE" }),
+
   // System updates
   checkUpdate: () => apiFetch<any>("/api/settings/update-check"),
   applyUpdate: () => apiFetch<any>("/api/settings/update-apply", { method: "POST" }),

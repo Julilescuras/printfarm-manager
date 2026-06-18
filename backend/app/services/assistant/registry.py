@@ -34,6 +34,7 @@ class ToolRegistry:
 
     def __init__(self) -> None:
         self._tools: dict[str, Tool] = {}
+        self._disabled: set[str] = set()
 
     def register(
         self,
@@ -61,13 +62,29 @@ class ToolRegistry:
 
         return decorator
 
+    def set_disabled(self, names: set[str]) -> None:
+        """Update the set of disabled tool names (in-memory, for this process)."""
+        self._disabled = set(names)
+
+    def unregister_domain(self, domain: str) -> None:
+        """Remove all tools belonging to a domain — used to refresh custom tools."""
+        to_remove = [k for k, t in self._tools.items() if t.domain == domain]
+        for k in to_remove:
+            del self._tools[k]
+
+    def all_tools(self) -> list[Tool]:
+        """Return every registered tool regardless of disabled state."""
+        return list(self._tools.values())
+
     def specs(self, *, include_actions: bool) -> list[ToolSpec]:
         """Tool specs the model is allowed to see. Actions are excluded unless
-        explicitly included (and the caller is authorized)."""
+        explicitly included (and the caller is authorized). Disabled tools are
+        always hidden from the model."""
         return [
             t.spec
             for t in self._tools.values()
-            if include_actions or not t.is_action
+            if (include_actions or not t.is_action)
+            and t.spec.name not in self._disabled
         ]
 
     def get(self, name: str) -> Optional[Tool]:
@@ -82,6 +99,8 @@ class ToolRegistry:
         tool = self._tools.get(name)
         if tool is None:
             return json.dumps({"error": f"Herramienta desconocida: {name}"})
+        if name in self._disabled:
+            return json.dumps({"error": f"La herramienta '{name}' está deshabilitada."})
         try:
             result = tool.handler(**(arguments or {}))
             if inspect.isawaitable(result):

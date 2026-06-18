@@ -26,6 +26,7 @@ from app.models.printer import Printer
 from app.models.maintenance import MaintenanceRecord
 from app.routers import printers, print_queue, maintenance, spoolman
 from app.routers import settings_router
+from app.routers import assistant_tools_router
 from app.services.moonraker import moonraker_manager
 from app.services.monitor import monitor
 from app.services.reporter import weekly_reporter
@@ -145,7 +146,13 @@ async def lifespan(app: FastAPI):
     # 7. Start auto-dispatch loop
     await dispatcher.start_auto_dispatch()
 
-    # 8. Start the Telegram assistant listener (no-ops until enabled in settings)
+    # 8. Load custom tools and disabled-tool state into the registry
+    from app.services.assistant.custom_tools_service import refresh_custom_tools, refresh_disabled_tools
+    await refresh_custom_tools()
+    await refresh_disabled_tools()
+    logger.info("✅ Assistant tools registry loaded")
+
+    # 9. Start the Telegram assistant listener (no-ops until enabled in settings)
     await telegram_listener.start()
     logger.info("✅ Telegram assistant listener started")
 
@@ -201,6 +208,7 @@ app.include_router(print_queue.router)
 app.include_router(maintenance.router)
 app.include_router(spoolman.router)
 app.include_router(settings_router.router)
+app.include_router(assistant_tools_router.router)
 
 
 # WebSocket endpoint for frontend
