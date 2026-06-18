@@ -46,7 +46,7 @@ async def init_db():
         await conn.execute(text("PRAGMA synchronous=NORMAL;"))
         
         # Import all models so they are registered with Base
-        from app.models import printer, print_job, maintenance, settings  # noqa: F401
+        from app.models import printer, print_job, maintenance, settings, custom_tool  # noqa: F401
         await conn.run_sync(Base.metadata.create_all)
 
         # --- Migrations: add new columns to existing tables ---
