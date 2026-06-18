@@ -24,6 +24,7 @@ import {
 import { api } from "@/lib/api";
 import { AppearancePanel } from "@/components/settings/appearance-panel";
 import { DangerZone } from "@/components/settings/danger-zone";
+import { AssistantToolsPanel } from "@/components/settings/assistant-tools-panel";
 
 export default function SettingsPage() {
   const [botToken, setBotToken] = useState("");
@@ -965,6 +966,9 @@ export default function SettingsPage() {
           </ul>
         </div>
       </div>
+
+      {/* Bot Tools — preheat temps, enable/disable tools, custom macros */}
+      <AssistantToolsPanel />
 
       {/* Danger Zone — hidden/collapsed, with typed confirmation */}
       <DangerZone />

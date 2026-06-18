@@ -110,6 +110,33 @@ export interface SpoolInfo {
   last_used: string | null;
 }
 
+export interface AssistantTool {
+  name: string;
+  description: string;
+  is_action: boolean;
+  domain: string;
+  enabled: boolean;
+  is_custom: boolean;
+}
+
+export interface MaterialTemp {
+  hotend: number;
+  bed: number;
+}
+
+export type MaterialTemps = Record<string, MaterialTemp>;
+
+export interface CustomToolItem {
+  id: number;
+  name: string;
+  description: string;
+  gcode: string;
+  is_action: boolean;
+  requires_printer: boolean;
+  enabled: boolean;
+  created_at: string | null;
+}
+
 export interface WSMessage {
   type: "initial_state" | "printer_update" | "printer_removed" | "queue_update" | "maintenance_update";
   data: any;

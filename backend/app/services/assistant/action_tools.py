@@ -8,6 +8,7 @@ emptying the bed via the bot counts as a human ("the operator asked for it"),
 identical to pressing "Vaciar Cama" in the UI.
 """
 
+import json
 import logging
 from typing import Any, Optional
 
@@ -16,6 +17,7 @@ from sqlalchemy import select
 from app.database import async_session
 from app.models.printer import Printer
 from app.models.print_job import PrintJob
+from app.models.settings import AppSettings
 from app.services.assistant.registry import tool_registry
 from app.services.dispatcher import dispatcher
 from app.services.moonraker import moonraker_manager
@@ -24,15 +26,40 @@ from app.ws.hub import ws_hub
 
 logger = logging.getLogger("printfarm.assistant")
 
-# Typical preheat temps per material (hotend, bed) in °C.
-MATERIAL_TEMPS = {
-    "PLA": (210, 60),
+# Default preheat temps per material (hotend, bed) in °C — overridable via settings.
+DEFAULT_MATERIAL_TEMPS: dict[str, tuple[int, int]] = {
+    "PLA": (205, 60),
     "PETG": (240, 80),
     "ABS": (250, 100),
     "ASA": (250, 100),
     "TPU": (230, 45),
     "NYLON": (260, 90),
 }
+
+
+async def _get_material_temps() -> dict[str, tuple[int, int]]:
+    """Read material temps from settings, falling back to defaults per material."""
+    async with async_session() as session:
+        row = (
+            await session.execute(
+                select(AppSettings).where(AppSettings.key == "assistant_material_temps")
+            )
+        ).scalar_one_or_none()
+    if row and row.value:
+        try:
+            data = json.loads(row.value)
+            result: dict[str, tuple[int, int]] = {}
+            for mat, temps in data.items():
+                if isinstance(temps, dict):
+                    default_h, default_b = DEFAULT_MATERIAL_TEMPS.get(mat.upper(), (200, 60))
+                    hotend = int(temps.get("hotend", default_h))
+                    bed = int(temps.get("bed", default_b))
+                    result[mat.upper()] = (hotend, bed)
+            if result:
+                return result
+        except (json.JSONDecodeError, TypeError, ValueError, KeyError):
+            pass
+    return DEFAULT_MATERIAL_TEMPS
 
 PRINTER_ARG = {
     "type": "object",
@@ -310,8 +337,9 @@ async def reanudar_impresion(impresora: str) -> dict[str, Any]:
 @tool_registry.register(
     name="precalentar",
     description=(
-        "Precalienta una impresora a las temperaturas típicas de un material "
-        "(PLA, PETG, ABS, ASA, TPU, NYLON), lista para empezar a imprimir."
+        "Precalienta una impresora a las temperaturas configuradas para un material "
+        "(PLA, PETG, ABS, ASA, TPU, NYLON u otros materiales personalizados), "
+        "lista para empezar a imprimir."
     ),
     parameters={
         "type": "object",
@@ -319,7 +347,7 @@ async def reanudar_impresion(impresora: str) -> dict[str, Any]:
             "impresora": {"type": "string", "description": "Nombre o id de la impresora."},
             "material": {
                 "type": "string",
-                "description": "Material: PLA, PETG, ABS, ASA, TPU o NYLON.",
+                "description": "Material (PLA, PETG, ABS, ASA, TPU, NYLON u otro configurado).",
             },
         },
         "required": ["impresora", "material"],
@@ -329,9 +357,10 @@ async def reanudar_impresion(impresora: str) -> dict[str, Any]:
 )
 async def precalentar(impresora: str, material: str) -> dict[str, Any]:
     mat = (material or "").strip().upper()
-    if mat not in MATERIAL_TEMPS:
-        return {"error": f"No conozco el material '{material}'. Opciones: {', '.join(MATERIAL_TEMPS)}."}
-    hotend, bed = MATERIAL_TEMPS[mat]
+    material_temps = await _get_material_temps()
+    if mat not in material_temps:
+        return {"error": f"No conozco el material '{material}'. Opciones: {', '.join(material_temps)}."}
+    hotend, bed = material_temps[mat]
 
     async with async_session() as session:
         printer = await _find_printer(session, impresora)
