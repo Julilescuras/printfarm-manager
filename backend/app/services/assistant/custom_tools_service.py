@@ -14,6 +14,7 @@ from sqlalchemy import select
 from app.database import async_session
 from app.models.custom_tool import CustomTool
 from app.models.settings import AppSettings
+from app.services.assistant.farm_tools import match_printers
 from app.services.assistant.registry import tool_registry
 from app.services.moonraker import moonraker_manager
 
@@ -33,62 +34,59 @@ _PRINTER_PARAM = {
 }
 
 
-async def _resolve_printer(query: str):
-    """Find a printer from a loose user-typed name. Returns (printer_id, name) or None."""
-    from app.models.printer import Printer
-    async with async_session() as session:
-        printers = (await session.execute(select(Printer))).scalars().all()
-    if not query:
-        return None
-    q = query.strip().lower()
-    for p in printers:
-        if p.name.lower() == q:
-            return p
-    for p in printers:
-        if q in p.name.lower() or p.name.lower() in q:
-            return p
-    q_tokens = set(q.replace("-", " ").split())
-    for p in printers:
-        if q_tokens & set(p.name.lower().replace("-", " ").split()):
-            return p
-    return None
-
-
 def _make_printer_handler(tool_name: str, gcode: str):
-    """Return an async handler that resolves a printer and runs the G-code."""
+    """Return an async handler that resolves one or more printers and runs the
+    G-code on each. Accepts a group term ('enders', 'todas') and skips any
+    printer that is currently printing, so a macro never interrupts a job."""
 
     async def handler(impresora: str) -> dict[str, Any]:
-        printer = await _resolve_printer(impresora)
-        if not printer:
-            return {"error": f"No encontré una impresora que coincida con '{impresora}'."}
-        if printer.status == "printing":
-            return {"error": f"{printer.name} está imprimiendo; no ejecuto el script para no interferir."}
-        printer_id, name = printer.id, printer.name
+        async with async_session() as session:
+            targets = await match_printers(session, impresora)
+            if not targets:
+                return {"error": f"No encontré ninguna impresora que coincida con '{impresora}'."}
+            candidatas = [(p.id, p.name) for p in targets if p.status != "printing"]
+            imprimiendo = [p.name for p in targets if p.status == "printing"]
 
-        client = moonraker_manager.get_client(printer_id)
-        if not client or not client.is_connected:
-            return {"error": f"{name} no está conectada a Moonraker."}
-        ok = await client.run_gcode(gcode)
+        if not candidatas:
+            return {
+                "ok": False,
+                "ejecutado_en": [],
+                "imprimiendo": imprimiendo,
+                "mensaje": "Esas impresoras están imprimiendo; no ejecuto el script para no interferir.",
+            }
+
+        ejecutado: list[str] = []
+        fallaron: list[str] = []
+        for printer_id, name in candidatas:
+            client = moonraker_manager.get_client(printer_id)
+            if not client or not client.is_connected:
+                fallaron.append(f"{name} (no conectada a Moonraker)")
+                continue
+            if await client.run_gcode(gcode):
+                ejecutado.append(name)
+            else:
+                fallaron.append(name)
+
         return {
-            "ok": ok,
-            "impresora": name,
-            "resultado": "Script ejecutado correctamente." if ok else "No se pudo ejecutar el script.",
+            "ok": bool(ejecutado),
+            "ejecutado_en": ejecutado,
+            "fallaron": fallaron,
+            "imprimiendo": imprimiendo,
         }
 
     handler.__name__ = tool_name
     return handler
 
 
-def _make_no_printer_handler(tool_name: str):
-    async def handler() -> dict[str, Any]:
-        return {"error": "Esta herramienta no tiene impresora destino configurada."}
-
-    handler.__name__ = tool_name
-    return handler
-
-
 async def refresh_custom_tools() -> None:
-    """Unregister all custom tools and re-register the enabled ones from the DB."""
+    """Unregister all custom tools and re-register the enabled ones from the DB.
+
+    Every custom tool runs G-code on a target printer, so it is ALWAYS registered
+    as an action (requires authorization) and ALWAYS takes a printer argument —
+    regardless of how the DB row's is_action/requires_printer flags were saved.
+    This closes the hole where a G-code macro stored with is_action=False would
+    have been exposed to unauthorized users.
+    """
     tool_registry.unregister_domain(CUSTOM_DOMAIN)
 
     async with async_session() as session:
@@ -99,19 +97,13 @@ async def refresh_custom_tools() -> None:
         ).scalars().all()
 
     for t in tools:
-        params = _PRINTER_PARAM if t.requires_printer else {"type": "object", "properties": {}}
-        handler = (
-            _make_printer_handler(t.name, t.gcode)
-            if t.requires_printer
-            else _make_no_printer_handler(t.name)
-        )
         tool_registry.register(
             name=t.name,
             description=t.description,
-            parameters=params,
-            is_action=t.is_action,
+            parameters=_PRINTER_PARAM,
+            is_action=True,
             domain=CUSTOM_DOMAIN,
-        )(handler)
+        )(_make_printer_handler(t.name, t.gcode))
 
     logger.info("Custom tools refreshed: %d registered", len(tools))
 

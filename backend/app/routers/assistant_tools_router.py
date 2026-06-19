@@ -204,12 +204,15 @@ async def create_custom_tool(data: CustomToolCreate, db: AsyncSession = Depends(
     if existing:
         raise HTTPException(status_code=409, detail=f"Ya existe una herramienta personalizada con el nombre '{name}'.")
 
+    # Custom macros always run G-code on a target printer: they are always
+    # actions (need authorization) and always require a printer. We ignore any
+    # weaker flags the client may send so a macro can't be left unguarded.
     tool = CustomTool(
         name=name,
         description=data.description.strip(),
         gcode=data.gcode.strip(),
-        is_action=data.is_action,
-        requires_printer=data.requires_printer,
+        is_action=True,
+        requires_printer=True,
         enabled=True,
     )
     db.add(tool)
@@ -251,10 +254,10 @@ async def update_custom_tool(
         tool.description = data.description.strip()
     if data.gcode is not None:
         tool.gcode = data.gcode.strip()
-    if data.is_action is not None:
-        tool.is_action = data.is_action
-    if data.requires_printer is not None:
-        tool.requires_printer = data.requires_printer
+    # Keep the invariant: custom macros are always printer-targeted actions.
+    # This also heals any legacy row saved with weaker flags when it's edited.
+    tool.is_action = True
+    tool.requires_printer = True
     if data.enabled is not None:
         tool.enabled = data.enabled
 
