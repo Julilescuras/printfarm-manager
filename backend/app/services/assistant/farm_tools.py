@@ -10,6 +10,7 @@ the plumbing already supports them.
 """
 
 import logging
+import re
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -67,6 +68,132 @@ def _fmt_duration(seconds: int | None) -> str | None:
     if h:
         return f"{h}h"
     return f"{m}min"
+
+
+# ── Printer name resolution (shared by farm/action/custom tools) ───────────────
+# Words that carry no printer-identifying signal. They're ignored when matching
+# by token so a phrase like "las 3 enders" doesn't false-match a printer just
+# because its name contains a "3" — that bug made the bot resolve a plural
+# request to one wrong (often printing) printer.
+_STOPWORDS = {
+    "la", "las", "el", "los", "lo", "un", "una", "unos", "unas",
+    "de", "del", "y", "o", "a", "para", "en", "con", "que", "esta", "este",
+    "cama", "camas", "impresora", "impresoras", "maquina", "maquinas",
+    "máquina", "máquinas", "printer", "printers",
+}
+_ALL_WORDS = {"todas", "todos", "toda", "todo", "all", "cualquiera", "cualquier"}
+
+
+def _norm(s: str | None) -> str:
+    return (s or "").strip().lower().replace("-", " ").replace("_", " ")
+
+
+def _name_tokens(name: str) -> list[str]:
+    return [t for t in _norm(name).split() if t]
+
+
+def _query_tokens(query: str) -> set[str]:
+    """Meaningful tokens of a query: drop stopwords and pure-number tokens."""
+    return {
+        t for t in _norm(query).split()
+        if t and t not in _STOPWORDS and not t.isdigit()
+    }
+
+
+def _token_hit(qtok: str, ntok: str) -> bool:
+    """A query token matches a name token by equality, or by substring when both
+    are long enough to be meaningful (handles plurals: 'enders' ⊃ 'ender')."""
+    if qtok == ntok:
+        return True
+    return len(qtok) >= 3 and len(ntok) >= 3 and (qtok in ntok or ntok in qtok)
+
+
+# Separators an enumeration may use: commas/semicolons/slashes and the
+# conjunctions "y"/"e"/"and" as standalone words. Lets "la i1, la i2 y la i4"
+# resolve to all three even when the user (or a voice note) lists them out.
+_SEPARATORS = re.compile(r"\s*(?:,|;|/|\+|&|\band\b|\by\b|\be\b)\s*")
+
+
+def _split_query(query: str) -> list[str]:
+    return [seg for seg in (s.strip() for s in _SEPARATORS.split(_norm(query))) if seg]
+
+
+def _match_one(printers: list[Printer], segment: str) -> list[Printer]:
+    """Tiered match of a single (already-normalized) segment against printers."""
+    if not segment:
+        return []
+    if set(segment.split()) & _ALL_WORDS:
+        return list(printers)
+
+    exact = [p for p in printers if _norm(p.name) == segment]
+    if exact:
+        return exact
+
+    substr = [p for p in printers if segment in _norm(p.name) or _norm(p.name) in segment]
+    if substr:
+        return substr
+
+    qtokens = _query_tokens(segment)
+    if qtokens:
+        token = [
+            p for p in printers
+            if any(_token_hit(q, n) for q in qtokens for n in _name_tokens(p.name))
+        ]
+        if token:
+            return token
+
+    # Last resort: the user gave only a number ("vaciá la 3").
+    nums = {t for t in segment.split() if t.isdigit()}
+    if nums:
+        return [p for p in printers if nums & set(_name_tokens(p.name))]
+
+    return []
+
+
+async def match_printers(session, query: str) -> list[Printer]:
+    """Resolve EVERY printer a loose, user-typed phrase refers to.
+
+    Tiered per segment so it never guesses blindly: 'todas' → all; exact name;
+    whole-phrase substring; then meaningful-token overlap (ignoring
+    numbers/stopwords, so 'enders' returns every Ender without 'las 3 enders'
+    matching only on the '3'). Enumerations ("la i1, la i2 y la i4") are split
+    and unioned. Returns [] when nothing matches.
+    """
+    printers = (
+        await session.execute(select(Printer).order_by(Printer.id))
+    ).scalars().all()
+    segments = _split_query(query)
+    if not segments:
+        return []
+    if len(segments) == 1:
+        return _match_one(printers, segments[0])
+
+    seen: set[int] = set()
+    out: list[Printer] = []
+    for seg in segments:
+        for p in _match_one(printers, seg):
+            if p.id not in seen:
+                seen.add(p.id)
+                out.append(p)
+    return out
+
+
+async def resolve_one_printer(session, query: str):
+    """For surgical/destructive actions: return (printer, error_dict).
+
+    Requires exactly one match — ambiguity and not-found are reported back so
+    the model asks the user instead of acting on the wrong machine.
+    """
+    matches = await match_printers(session, query)
+    if not matches:
+        return None, {"error": f"No encontré ninguna impresora que coincida con '{query}'."}
+    if len(matches) > 1:
+        return None, {
+            "ambiguo": True,
+            "mensaje": f"Varias impresoras coinciden con '{query}'; decime cuál puntualmente.",
+            "candidatos": [p.name for p in matches],
+        }
+    return matches[0], None
 
 
 @tool_registry.register(
