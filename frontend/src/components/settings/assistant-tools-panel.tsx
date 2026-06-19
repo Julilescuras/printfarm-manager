@@ -323,10 +323,14 @@ function CustomToolsSection() {
     setSaving(true);
     setError(null);
     try {
+      // Custom macros always run G-code on a printer: they're always actions
+      // (need authorization) and always require a printer. Forced here too so
+      // the UI never sends weaker flags.
+      const payload = { ...form, is_action: true, requires_printer: true };
       if (editing) {
-        await api.updateCustomTool(editing.id, form);
+        await api.updateCustomTool(editing.id, payload);
       } else {
-        await api.createCustomTool(form);
+        await api.createCustomTool(payload);
       }
       cancelForm();
       await load();
@@ -450,25 +454,13 @@ function CustomToolsSection() {
             </p>
           </div>
 
-          <div className="flex gap-6 flex-wrap">
-            <label className="flex items-center gap-2 cursor-pointer select-none text-sm">
-              <input
-                type="checkbox"
-                checked={form.is_action}
-                onChange={(e) => setForm((f) => ({ ...f, is_action: e.target.checked }))}
-                className="rounded"
-              />
-              Es una acción (requiere autorización)
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer select-none text-sm">
-              <input
-                type="checkbox"
-                checked={form.requires_printer}
-                onChange={(e) => setForm((f) => ({ ...f, requires_printer: e.target.checked }))}
-                className="rounded"
-              />
-              Requiere especificar impresora
-            </label>
+          <div className="flex items-start gap-2 text-xs text-muted-foreground bg-secondary/60 border border-border rounded-lg p-2.5">
+            <Zap className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-400" />
+            <span>
+              Toda macro es una <span className="font-medium">acción</span>: requiere autorización
+              (y PIN si está activado) y que se indique la impresora. Acepta grupos
+              («las enders», «todas»).
+            </span>
           </div>
 
           {error && (

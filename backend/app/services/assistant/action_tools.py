@@ -10,7 +10,7 @@ identical to pressing "Vaciar Cama" in the UI.
 
 import json
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy import select
 
@@ -21,7 +21,12 @@ from app.models.settings import AppSettings
 from app.services.assistant.registry import tool_registry
 from app.services.dispatcher import dispatcher
 from app.services.moonraker import moonraker_manager
-from app.services.assistant.farm_tools import DOMAIN, STATUS_LABELS
+from app.services.assistant.farm_tools import (
+    DOMAIN,
+    STATUS_LABELS,
+    match_printers,
+    resolve_one_printer,
+)
 from app.ws.hub import ws_hub
 
 logger = logging.getLogger("printfarm.assistant")
@@ -71,26 +76,6 @@ PRINTER_ARG = {
     },
     "required": ["impresora"],
 }
-
-
-async def _find_printer(session, query: str) -> Optional[Printer]:
-    """Resolve a printer from a loose name the user spoke/typed."""
-    printers = (await session.execute(select(Printer))).scalars().all()
-    if not query:
-        return None
-    q = query.strip().lower()
-    # exact name, then substring, then token match (handles "i4", "ender 2").
-    for p in printers:
-        if p.name.lower() == q:
-            return p
-    for p in printers:
-        if q in p.name.lower() or p.name.lower() in q:
-            return p
-    q_tokens = set(q.replace("-", " ").split())
-    for p in printers:
-        if q_tokens & set(p.name.lower().replace("-", " ").split()):
-            return p
-    return None
 
 
 async def _find_jobs(session, query: str, statuses: list[str]) -> list[PrintJob]:
@@ -149,9 +134,12 @@ async def _broadcast_queue() -> None:
 @tool_registry.register(
     name="vaciar_cama",
     description=(
-        "Marca la cama de una impresora como vacía (equivale al botón 'Vaciar Cama') "
-        "y despacha el próximo trabajo compatible. Solo válido si la impresora terminó "
-        "y está esperando que se retire la pieza."
+        "Marca como vacía la cama de UNA O VARIAS impresoras (equivale al botón "
+        "'Vaciar Cama') y despacha el próximo trabajo compatible en cada una. Para "
+        "actuar sobre un grupo pasá un término que lo agrupe ('enders', 'todas', "
+        "'las i4'): aplica a todas las que terminaron y esperan vaciado, e ignora "
+        "las que no estén en ese estado (informándolo). Solo vacía las que están "
+        "esperando que se retire la pieza."
     ),
     parameters=PRINTER_ARG,
     is_action=True,
@@ -159,35 +147,59 @@ async def _broadcast_queue() -> None:
 )
 async def vaciar_cama(impresora: str) -> dict[str, Any]:
     async with async_session() as session:
-        printer = await _find_printer(session, impresora)
-        if not printer:
-            return {"error": f"No encontré una impresora que coincida con '{impresora}'."}
-        if printer.status != "requires_clearance":
-            return {"error": f"{printer.name} no está esperando vaciado (está: {_label(printer.status)})."}
+        targets = await match_printers(session, impresora)
+        if not targets:
+            return {"error": f"No encontré ninguna impresora que coincida con '{impresora}'."}
+        ready = [(p.id, p.name) for p in targets if p.status == "requires_clearance"]
+        no_listas = [
+            {"impresora": p.name, "estado": _label(p.status)}
+            for p in targets if p.status != "requires_clearance"
+        ]
 
-        await dispatcher.on_print_complete(printer.id)
-        printer.status = "available"
-        printer.bed_cleared = True
-        printer.current_job_progress = 0.0
-        printer.current_filename = None
-        printer.thumbnail_url = None
-        await session.commit()
-        await session.refresh(printer)
-        await _broadcast(printer)
+    if not ready:
+        return {
+            "ok": False,
+            "vaciadas": [],
+            "no_listas": no_listas,
+            "mensaje": "Ninguna de esas impresoras está esperando vaciado.",
+        }
 
-    dispatched = await dispatcher.try_dispatch(printer.id)
+    vaciadas: list[str] = []
+    despachadas: list[str] = []
+    for printer_id, name in ready:
+        await dispatcher.on_print_complete(printer_id)
+        async with async_session() as session:
+            printer = (
+                await session.execute(select(Printer).where(Printer.id == printer_id))
+            ).scalar_one_or_none()
+            if not printer:
+                continue
+            printer.status = "available"
+            printer.bed_cleared = True
+            printer.current_job_progress = 0.0
+            printer.current_filename = None
+            printer.thumbnail_url = None
+            await session.commit()
+            await session.refresh(printer)
+            await _broadcast(printer)
+        vaciadas.append(name)
+        if await dispatcher.try_dispatch(printer_id):
+            despachadas.append(name)
+
     return {
         "ok": True,
-        "impresora": printer.name,
-        "resultado": "Cama vaciada" + (" y se envió el próximo trabajo." if dispatched else ". No hay trabajos compatibles pendientes."),
+        "vaciadas": vaciadas,
+        "despachadas": despachadas,
+        "no_listas": no_listas,
     }
 
 
 @tool_registry.register(
     name="despachar_trabajo",
     description=(
-        "Envía el próximo trabajo compatible de la cola a una impresora libre "
-        "(en espera o disponible)."
+        "Envía el próximo trabajo compatible de la cola a una o varias impresoras "
+        "libres (en espera o disponibles). Acepta un grupo ('enders', 'todas') y "
+        "despacha a cada impresora libre que coincida."
     ),
     parameters=PRINTER_ARG,
     is_action=True,
@@ -195,18 +207,36 @@ async def vaciar_cama(impresora: str) -> dict[str, Any]:
 )
 async def despachar_trabajo(impresora: str) -> dict[str, Any]:
     async with async_session() as session:
-        printer = await _find_printer(session, impresora)
-        if not printer:
-            return {"error": f"No encontré una impresora que coincida con '{impresora}'."}
-        if printer.status not in ("standby", "available"):
-            return {"error": f"{printer.name} no está libre (está: {_label(printer.status)})."}
-        printer_id, name = printer.id, printer.name
+        targets = await match_printers(session, impresora)
+        if not targets:
+            return {"error": f"No encontré ninguna impresora que coincida con '{impresora}'."}
+        libres = [(p.id, p.name) for p in targets if p.status in ("standby", "available")]
+        ocupadas = [
+            {"impresora": p.name, "estado": _label(p.status)}
+            for p in targets if p.status not in ("standby", "available")
+        ]
 
-    dispatched = await dispatcher.try_dispatch(printer_id)
+    if not libres:
+        return {
+            "ok": False,
+            "despachadas": [],
+            "ocupadas": ocupadas,
+            "mensaje": "Ninguna de esas impresoras está libre para despachar.",
+        }
+
+    despachadas: list[str] = []
+    sin_trabajo: list[str] = []
+    for printer_id, name in libres:
+        if await dispatcher.try_dispatch(printer_id):
+            despachadas.append(name)
+        else:
+            sin_trabajo.append(name)
+
     return {
-        "ok": True,
-        "impresora": name,
-        "resultado": "Trabajo enviado." if dispatched else "No hay trabajos compatibles en la cola.",
+        "ok": bool(despachadas),
+        "despachadas": despachadas,
+        "sin_trabajo_compatible": sin_trabajo,
+        "ocupadas": ocupadas,
     }
 
 
@@ -292,46 +322,90 @@ async def reanudar_trabajo(trabajo: str) -> dict[str, Any]:
 
 @tool_registry.register(
     name="pausar_impresion",
-    description="Pausa la impresión en curso de una impresora.",
+    description=(
+        "Pausa la impresión en curso de una o varias impresoras. Acepta un grupo "
+        "('enders', 'todas') y pausa todas las que estén imprimiendo."
+    ),
     parameters=PRINTER_ARG,
     is_action=True,
     domain=DOMAIN,
 )
 async def pausar_impresion(impresora: str) -> dict[str, Any]:
     async with async_session() as session:
-        printer = await _find_printer(session, impresora)
-        if not printer:
-            return {"error": f"No encontré una impresora que coincida con '{impresora}'."}
-        if printer.status != "printing":
-            return {"error": f"{printer.name} no está imprimiendo (está: {_label(printer.status)})."}
-        printer_id, name = printer.id, printer.name
+        targets = await match_printers(session, impresora)
+        if not targets:
+            return {"error": f"No encontré ninguna impresora que coincida con '{impresora}'."}
+        imprimiendo = [(p.id, p.name) for p in targets if p.status == "printing"]
+        no_imprimiendo = [
+            {"impresora": p.name, "estado": _label(p.status)}
+            for p in targets if p.status != "printing"
+        ]
 
-    client = moonraker_manager.get_client(printer_id)
-    if not client or not client.is_connected:
-        return {"error": f"{name} no está conectada a Moonraker."}
-    ok = await client.pause_print()
-    return {"ok": ok, "impresora": name, "resultado": "Impresión pausada." if ok else "No se pudo pausar."}
+    if not imprimiendo:
+        return {
+            "ok": False,
+            "pausadas": [],
+            "no_imprimiendo": no_imprimiendo,
+            "mensaje": "Ninguna de esas impresoras está imprimiendo.",
+        }
+
+    pausadas: list[str] = []
+    fallaron: list[str] = []
+    for printer_id, name in imprimiendo:
+        client = moonraker_manager.get_client(printer_id)
+        if not client or not client.is_connected:
+            fallaron.append(f"{name} (no conectada a Moonraker)")
+            continue
+        if await client.pause_print():
+            pausadas.append(name)
+        else:
+            fallaron.append(name)
+
+    return {"ok": bool(pausadas), "pausadas": pausadas, "fallaron": fallaron, "no_imprimiendo": no_imprimiendo}
 
 
 @tool_registry.register(
     name="reanudar_impresion",
-    description="Reanuda una impresión que estaba pausada.",
+    description=(
+        "Reanuda una o varias impresiones que estaban pausadas. Acepta un grupo "
+        "('enders', 'todas') y reanuda todas las que estén en pausa."
+    ),
     parameters=PRINTER_ARG,
     is_action=True,
     domain=DOMAIN,
 )
 async def reanudar_impresion(impresora: str) -> dict[str, Any]:
     async with async_session() as session:
-        printer = await _find_printer(session, impresora)
-        if not printer:
-            return {"error": f"No encontré una impresora que coincida con '{impresora}'."}
-        printer_id, name = printer.id, printer.name
+        targets = await match_printers(session, impresora)
+        if not targets:
+            return {"error": f"No encontré ninguna impresora que coincida con '{impresora}'."}
+        pausadas = [(p.id, p.name) for p in targets if p.status == "paused"]
+        no_pausadas = [
+            {"impresora": p.name, "estado": _label(p.status)}
+            for p in targets if p.status != "paused"
+        ]
 
-    client = moonraker_manager.get_client(printer_id)
-    if not client or not client.is_connected:
-        return {"error": f"{name} no está conectada a Moonraker."}
-    ok = await client.resume_print()
-    return {"ok": ok, "impresora": name, "resultado": "Impresión reanudada." if ok else "No se pudo reanudar."}
+    if not pausadas:
+        return {
+            "ok": False,
+            "reanudadas": [],
+            "no_pausadas": no_pausadas,
+            "mensaje": "Ninguna de esas impresoras está pausada.",
+        }
+
+    reanudadas: list[str] = []
+    fallaron: list[str] = []
+    for printer_id, name in pausadas:
+        client = moonraker_manager.get_client(printer_id)
+        if not client or not client.is_connected:
+            fallaron.append(f"{name} (no conectada a Moonraker)")
+            continue
+        if await client.resume_print():
+            reanudadas.append(name)
+        else:
+            fallaron.append(name)
+
+    return {"ok": bool(reanudadas), "reanudadas": reanudadas, "fallaron": fallaron, "no_pausadas": no_pausadas}
 
 
 @tool_registry.register(
@@ -363,46 +437,81 @@ async def precalentar(impresora: str, material: str) -> dict[str, Any]:
     hotend, bed = material_temps[mat]
 
     async with async_session() as session:
-        printer = await _find_printer(session, impresora)
-        if not printer:
-            return {"error": f"No encontré una impresora que coincida con '{impresora}'."}
-        if printer.status == "printing":
-            return {"error": f"{printer.name} está imprimiendo; no la precaliento para no interferir."}
-        printer_id, name = printer.id, printer.name
+        targets = await match_printers(session, impresora)
+        if not targets:
+            return {"error": f"No encontré ninguna impresora que coincida con '{impresora}'."}
+        candidatas = [(p.id, p.name) for p in targets if p.status != "printing"]
+        imprimiendo = [p.name for p in targets if p.status == "printing"]
 
-    client = moonraker_manager.get_client(printer_id)
-    if not client or not client.is_connected:
-        return {"error": f"{name} no está conectada a Moonraker."}
-    ok = await client.run_gcode(f"M140 S{bed}\nM104 S{hotend}")
+    if not candidatas:
+        return {
+            "ok": False,
+            "precalentadas": [],
+            "imprimiendo": imprimiendo,
+            "mensaje": "Esas impresoras están imprimiendo; no las precaliento para no interferir.",
+        }
+
+    precalentadas: list[str] = []
+    fallaron: list[str] = []
+    for printer_id, name in candidatas:
+        client = moonraker_manager.get_client(printer_id)
+        if not client or not client.is_connected:
+            fallaron.append(f"{name} (no conectada a Moonraker)")
+            continue
+        if await client.run_gcode(f"M140 S{bed}\nM104 S{hotend}"):
+            precalentadas.append(name)
+        else:
+            fallaron.append(name)
+
     return {
-        "ok": ok,
-        "impresora": name,
+        "ok": bool(precalentadas),
         "material": mat,
-        "resultado": f"Precalentando para {mat}: hotend {hotend}°C, cama {bed}°C." if ok else "No se pudo precalentar.",
+        "temperaturas": {"hotend": hotend, "cama": bed},
+        "precalentadas": precalentadas,
+        "fallaron": fallaron,
+        "imprimiendo": imprimiendo,
     }
 
 
 @tool_registry.register(
     name="enfriar",
-    description="Apaga todos los calentadores de una impresora (hotend y cama).",
+    description=(
+        "Apaga todos los calentadores (hotend y cama) de una o varias impresoras. "
+        "Acepta un grupo ('enders', 'todas')."
+    ),
     parameters=PRINTER_ARG,
     is_action=True,
     domain=DOMAIN,
 )
 async def enfriar(impresora: str) -> dict[str, Any]:
     async with async_session() as session:
-        printer = await _find_printer(session, impresora)
-        if not printer:
-            return {"error": f"No encontré una impresora que coincida con '{impresora}'."}
-        if printer.status == "printing":
-            return {"error": f"{printer.name} está imprimiendo; no apago los calentadores."}
-        printer_id, name = printer.id, printer.name
+        targets = await match_printers(session, impresora)
+        if not targets:
+            return {"error": f"No encontré ninguna impresora que coincida con '{impresora}'."}
+        candidatas = [(p.id, p.name) for p in targets if p.status != "printing"]
+        imprimiendo = [p.name for p in targets if p.status == "printing"]
 
-    client = moonraker_manager.get_client(printer_id)
-    if not client or not client.is_connected:
-        return {"error": f"{name} no está conectada a Moonraker."}
-    ok = await client.run_gcode("TURN_OFF_HEATERS")
-    return {"ok": ok, "impresora": name, "resultado": "Calentadores apagados." if ok else "No se pudo apagar."}
+    if not candidatas:
+        return {
+            "ok": False,
+            "enfriadas": [],
+            "imprimiendo": imprimiendo,
+            "mensaje": "Esas impresoras están imprimiendo; no apago los calentadores.",
+        }
+
+    enfriadas: list[str] = []
+    fallaron: list[str] = []
+    for printer_id, name in candidatas:
+        client = moonraker_manager.get_client(printer_id)
+        if not client or not client.is_connected:
+            fallaron.append(f"{name} (no conectada a Moonraker)")
+            continue
+        if await client.run_gcode("TURN_OFF_HEATERS"):
+            enfriadas.append(name)
+        else:
+            fallaron.append(name)
+
+    return {"ok": bool(enfriadas), "enfriadas": enfriadas, "fallaron": fallaron, "imprimiendo": imprimiendo}
 
 
 @tool_registry.register(
@@ -417,9 +526,9 @@ async def enfriar(impresora: str) -> dict[str, Any]:
 )
 async def cancelar_impresion(impresora: str) -> dict[str, Any]:
     async with async_session() as session:
-        printer = await _find_printer(session, impresora)
-        if not printer:
-            return {"error": f"No encontré una impresora que coincida con '{impresora}'."}
+        printer, err = await resolve_one_printer(session, impresora)
+        if err:
+            return err
         if printer.status != "printing":
             return {"error": f"{printer.name} no está imprimiendo (está: {_label(printer.status)})."}
         printer_id, name = printer.id, printer.name
@@ -452,9 +561,9 @@ async def cancelar_impresion(impresora: str) -> dict[str, Any]:
 )
 async def reiniciar_firmware(impresora: str) -> dict[str, Any]:
     async with async_session() as session:
-        printer = await _find_printer(session, impresora)
-        if not printer:
-            return {"error": f"No encontré una impresora que coincida con '{impresora}'."}
+        printer, err = await resolve_one_printer(session, impresora)
+        if err:
+            return err
         if printer.status == "printing":
             return {"error": f"{printer.name} está imprimiendo; reiniciar el firmware abortaría la impresión."}
         printer_id, name = printer.id, printer.name
