@@ -495,7 +495,7 @@ function CustomToolsSection() {
 
 // ── Main panel ─────────────────────────────────────────────────────────────────
 export function AssistantToolsPanel() {
-  const [openSection, setOpenSection] = useState<"temps" | "tools" | "custom" | null>("tools");
+  const [openSection, setOpenSection] = useState<"temps" | "tools" | "custom" | null>(null);
 
   const Section = ({
     id,
