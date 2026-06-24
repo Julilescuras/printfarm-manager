@@ -18,7 +18,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { useWSContext } from "@/providers/websocket-provider";
-import { api } from "@/lib/api";
+import { api, SPOOLMAN_URL } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -156,7 +156,7 @@ export function Sidebar({ collapsed = false, onNavigate, onToggleCollapse, onClo
       {/* Spoolman link */}
       <div className={cn("border-t border-border", collapsed ? "p-2" : "p-4")}>
         <a
-          href={typeof window !== "undefined" ? `http://${window.location.hostname}:7912` : "http://localhost:7912"}
+          href={SPOOLMAN_URL}
           target="_blank"
           rel="noopener noreferrer"
           title="Abrir Spoolman"
