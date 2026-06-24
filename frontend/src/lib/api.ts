@@ -21,6 +21,11 @@ export function apiUrl(path: string): string {
   return `${API_BASE}${path}`;
 }
 
+/** URL pública de Spoolman — mismo host que el backend pero puerto 7912. */
+export const SPOOLMAN_URL = API_BASE
+  ? API_BASE.replace(/:(\d+)$/, ":7912")
+  : `http://${typeof window !== "undefined" ? window.location.hostname : "localhost"}:7912`;
+
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {}
