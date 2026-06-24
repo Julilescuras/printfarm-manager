@@ -15,6 +15,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   X,
+  ExternalLink,
 } from "lucide-react";
 import { useWSContext } from "@/providers/websocket-provider";
 import { api } from "@/lib/api";
@@ -151,6 +152,28 @@ export function Sidebar({ collapsed = false, onNavigate, onToggleCollapse, onClo
           );
         })}
       </nav>
+
+      {/* Spoolman link */}
+      <div className={cn("border-t border-border", collapsed ? "p-2" : "p-4")}>
+        <a
+          href={typeof window !== "undefined" ? `http://${window.location.hostname}:7912` : "http://localhost:7912"}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Abrir Spoolman"
+          className={cn(
+            "sidebar-link w-full",
+            collapsed && "justify-center px-0"
+          )}
+        >
+          <Palette className="w-5 h-5 shrink-0" />
+          {!collapsed && (
+            <>
+              <span className="truncate">Spoolman</span>
+              <ExternalLink className="w-3.5 h-3.5 ml-auto text-muted-foreground" />
+            </>
+          )}
+        </a>
+      </div>
 
       {/* Status footer */}
       <div className={cn("border-t border-border space-y-3", collapsed ? "p-2" : "p-4")}>
