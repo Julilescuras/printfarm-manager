@@ -4,6 +4,7 @@ node_modules/
 
 # Build outputs
 .next/
+*.tsbuildinfo
 __pycache__/
 *.pyc
 *.pyo
