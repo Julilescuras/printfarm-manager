@@ -461,46 +461,64 @@ export default function PrinterDetailsPage() {
                 </div>
               ) : (
                 <div className="divide-y divide-border max-h-72 overflow-y-auto">
-                  {availableSpools.map((spool) => {
-                    const isCurrent = spool.id === printer.current_spool_id;
-                    return (
-                      <button
-                        key={spool.id}
-                        onClick={() => !isCurrent && handleAssignSpool(spool.id)}
-                        disabled={isAssigningSpool || isCurrent}
-                        className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
-                          isCurrent
-                            ? "bg-primary/10 cursor-default"
-                            : "hover:bg-secondary/70 cursor-pointer"
-                        } disabled:opacity-60`}
-                      >
-                        <div
-                          className="w-6 h-6 rounded-full border border-white/20 shrink-0"
-                          style={{ backgroundColor: `#${spool.filament?.color_hex || "888"}` }}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-medium text-sm">
-                              {spool.filament?.material || "?"} — {spool.filament?.name || "Sin nombre"}
-                            </span>
-                            {isCurrent && (
-                              <span className="text-xs px-2 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/30">
-                                Actual
+                  {(() => {
+                    const spoolToOtherPrinter = new Map<number, string>();
+                    for (const p of printers) {
+                      if (p.id !== printer.id && p.current_spool_id != null) {
+                        spoolToOtherPrinter.set(p.current_spool_id, p.name);
+                      }
+                    }
+                    return availableSpools.map((spool) => {
+                      const isCurrent = spool.id === printer.current_spool_id;
+                      const otherPrinterName = spoolToOtherPrinter.get(spool.id);
+                      const isUsedByOther = !!otherPrinterName;
+                      const isDisabled = isAssigningSpool || isCurrent || isUsedByOther;
+                      return (
+                        <button
+                          key={spool.id}
+                          onClick={() => !isDisabled && handleAssignSpool(spool.id)}
+                          disabled={isDisabled}
+                          className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
+                            isCurrent
+                              ? "bg-primary/10 cursor-default"
+                              : isUsedByOther
+                              ? "opacity-40 cursor-default"
+                              : "hover:bg-secondary/70 cursor-pointer"
+                          } disabled:opacity-60`}
+                        >
+                          <div
+                            className="w-6 h-6 rounded-full border border-white/20 shrink-0"
+                            style={{ backgroundColor: `#${spool.filament?.color_hex || "888"}` }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-medium text-sm">
+                                {spool.filament?.material || "?"} — {spool.filament?.name || "Sin nombre"}
                               </span>
-                            )}
+                              {isCurrent && (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/30">
+                                  Actual
+                                </span>
+                              )}
+                              {isUsedByOther && (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-secondary text-muted-foreground border border-border">
+                                  En {otherPrinterName}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-0.5">
+                              {spool.filament?.vendor?.name || "Sin marca"} · #{spool.id}
+                              {spool.remaining_weight != null && (
+                                <span className={spool.remaining_weight < 100 ? " text-amber-400" : ""}>
+                                  {" "}· {spool.remaining_weight.toFixed(0)}g restantes
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          <div className="text-xs text-muted-foreground mt-0.5">
-                            {spool.filament?.vendor?.name || "Sin marca"} · #{spool.id}
-                            {spool.remaining_weight != null && (
-                              <span className={spool.remaining_weight < 100 ? " text-amber-400" : ""}>
-                                {" "}· {spool.remaining_weight.toFixed(0)}g restantes
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
+                        </button>
+                      );
+                    });
+                  })()}
                 </div>
               )}
             </div>

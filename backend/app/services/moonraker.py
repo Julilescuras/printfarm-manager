@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session
 from app.models.printer import Printer
+from app.services.filament_tracking import FilamentTrackingState, step_filament_tracking
 from app.services.telegram import telegram_notifier
 from app.version import APP_VERSION
 
@@ -50,6 +51,10 @@ class MoonrakerClient:
 
         # ETA tracking
         self._last_print_duration: float = 0.0
+
+        # Connection stability: only mark offline after 2 consecutive failures
+        # to avoid brief "offline" flickers during Klipper restarts / network blips
+        self._consecutive_failures: int = 0
 
     @property
     def is_connected(self) -> bool:
@@ -85,6 +90,7 @@ class MoonrakerClient:
                 async with websockets.connect(self.ws_url, ping_interval=20) as ws:
                     self._ws = ws
                     self._connected = True
+                    self._consecutive_failures = 0
                     logger.info(f"[Printer {self.printer_id}] Connected to Moonraker")
 
                     # Update printer status to indicate we're online
@@ -113,12 +119,19 @@ class MoonrakerClient:
                 # Typical of a power loss / cable pull mid-print: the socket just
                 # drops. Previously we did NOT mark offline here, so the card
                 # stayed frozen on 'printing'. Always reflect the disconnect.
-                logger.warning(f"[Printer {self.printer_id}] Connection closed, reconnecting...")
-                await self._mark_disconnected()
+                self._consecutive_failures += 1
+                logger.warning(
+                    f"[Printer {self.printer_id}] Connection closed (failure #{self._consecutive_failures}), reconnecting..."
+                )
+                if self._consecutive_failures >= 2:
+                    await self._mark_disconnected()
             except (ConnectionRefusedError, OSError) as e:
+                self._consecutive_failures += 1
                 logger.warning(f"[Printer {self.printer_id}] Cannot connect ({e}), retrying...")
-                await self._mark_disconnected()
+                if self._consecutive_failures >= 2:
+                    await self._mark_disconnected()
             except Exception as e:
+                self._consecutive_failures += 1
                 logger.error(f"[Printer {self.printer_id}] Unexpected error: {e}", exc_info=True)
                 await self._mark_disconnected()
             finally:
@@ -222,19 +235,36 @@ class MoonrakerClient:
         if "print_stats" in status_data:
             ps = status_data["print_stats"]
 
-            # Real-time filament tracking
+            # Real-time filament tracking. The non-trivial logic (ignoring
+            # retraction dips, detecting genuine print resets) lives in the pure,
+            # unit-tested helper `step_filament_tracking`.
             if "filament_used" in ps:
                 current_used = float(ps["filament_used"])
-                if not getattr(self, "_filament_tracking_initialized", False):
-                    self._last_filament_used = current_used
-                    self._filament_tracking_initialized = True
-                elif current_used < self._last_filament_used:
-                    # Reset (e.g. new print started)
-                    self._last_filament_used = current_used
-                else:
-                    delta = current_used - self._last_filament_used
-                    self._filament_used_accumulated += delta
-                    self._last_filament_used = current_used
+                was_initialized = getattr(self, "_filament_tracking_initialized", False)
+                prev_state = FilamentTrackingState(
+                    last_used=self._last_filament_used,
+                    accumulated=self._filament_used_accumulated,
+                    initialized=was_initialized,
+                    flush_pending=False,
+                )
+                new_state = step_filament_tracking(prev_state, current_used)
+                self._last_filament_used = new_state.last_used
+                self._filament_used_accumulated = new_state.accumulated
+                self._filament_tracking_initialized = new_state.initialized
+
+                if not was_initialized:
+                    logger.debug(
+                        f"[Printer {self.printer_id}] Filament init: baseline {current_used:.1f}mm"
+                    )
+                elif new_state.flush_pending:
+                    # Genuine reset detected (new print / Klipper restart): flush
+                    # the previous print's remaining usage before it gets mixed in.
+                    logger.info(
+                        f"[Printer {self.printer_id}] Print reset detected at {current_used:.1f}mm "
+                        f"(flushing {self._filament_used_accumulated:.1f}mm pending)"
+                    )
+                    if self._filament_used_accumulated > 0:
+                        asyncio.create_task(self._sync_filament_to_spoolman())
 
                 # Sync to Spoolman every 60 seconds
                 now = time.time()
@@ -416,11 +446,18 @@ class MoonrakerClient:
             self._filament_used_accumulated = 0.0
             self._last_spoolman_update_time = time.time()
 
+            logger.info(
+                f"[Printer {self.printer_id}] Syncing {amount_to_use:.1f}mm to Spoolman spool #{spool_id} "
+                f"(klipper total so far: {self._last_filament_used:.1f}mm)"
+            )
             from app.services.spoolman import spoolman_client
             success = await spoolman_client.use_filament(spool_id, amount_to_use)
             if not success:
                 # If it failed, add the amount back to retry later
                 self._filament_used_accumulated += amount_to_use
+                logger.warning(
+                    f"[Printer {self.printer_id}] Spoolman sync failed — {amount_to_use:.1f}mm will be retried"
+                )
         except Exception as e:
             logger.error(f"[Printer {self.printer_id}] Filament sync error: {e}")
         finally:
