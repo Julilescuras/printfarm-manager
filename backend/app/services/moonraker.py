@@ -300,9 +300,13 @@ class MoonrakerClient:
             if "filename" in ps:
                 updates["current_filename"] = ps["filename"]
 
-            if "total_duration" in ps:
-                self._last_print_duration = float(ps["total_duration"])
-                updates["total_print_time_secs"] = int(ps["total_duration"])
+            if "print_duration" in ps:
+                # Klipper expone total_duration (incluye tiempo pausado) y
+                # print_duration (solo tiempo real de impresión). Fluidd muestra
+                # print_duration, así que usamos el mismo campo para que la
+                # duración coincida exactamente con lo que ve el usuario ahí.
+                self._last_print_duration = float(ps["print_duration"])
+                updates["total_print_time_secs"] = int(ps["print_duration"])
 
             if "state" in ps:
                 new_state = ps["state"]
