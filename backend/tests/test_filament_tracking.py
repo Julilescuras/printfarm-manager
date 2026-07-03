@@ -23,6 +23,7 @@ _spec.loader.exec_module(_ft)
 
 FilamentTrackingState = _ft.FilamentTrackingState
 step_filament_tracking = _ft.step_filament_tracking
+filament_mm_to_grams = _ft.filament_mm_to_grams
 
 import sys  # noqa: E402
 
@@ -116,6 +117,29 @@ seq = [
 s, flushes = feed(INITIAL, seq)
 check("multi-print sequence flushes once at the new print",
       flushes == 1)
+
+# --- 9. mm -> grams conversion (PLA, 1.75mm) --------------------------------
+# 1000mm of 1.75mm PLA: area = pi*(0.875)^2 = 2.4053 mm², vol = 2405.3 mm³,
+# grams = 2405.3 * 1.24 / 1000 = 2.9826 g.
+g = filament_mm_to_grams(1000.0, "PLA")
+check("1000mm PLA ~= 2.98g", abs(g - 2.9826) < 1e-3)
+
+# --- 10. Denser material (PETG) weighs more for the same length -------------
+check("PETG heavier than PLA for same length",
+      filament_mm_to_grams(1000.0, "PETG") > filament_mm_to_grams(1000.0, "PLA"))
+
+# --- 11. Unknown/empty material falls back to PLA density -------------------
+check("unknown material falls back to PLA density",
+      abs(filament_mm_to_grams(1000.0, "UNOBTAINIUM") - filament_mm_to_grams(1000.0, "PLA")) < 1e-9
+      and abs(filament_mm_to_grams(1000.0, None) - filament_mm_to_grams(1000.0, "PLA")) < 1e-9)
+
+# --- 12. Material match is case-insensitive --------------------------------
+check("material lookup is case-insensitive",
+      abs(filament_mm_to_grams(1000.0, "petg") - filament_mm_to_grams(1000.0, "PETG")) < 1e-9)
+
+# --- 13. Non-positive length yields 0 --------------------------------------
+check("non-positive length yields 0g",
+      filament_mm_to_grams(0.0, "PLA") == 0.0 and filament_mm_to_grams(-5.0, "PLA") == 0.0)
 
 print()
 print(f"Filament tracking tests: {_passed} passed, {_failed} failed")

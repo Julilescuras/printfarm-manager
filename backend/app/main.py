@@ -27,6 +27,7 @@ from app.models.maintenance import MaintenanceRecord
 from app.routers import printers, print_queue, maintenance, spoolman
 from app.routers import settings_router
 from app.routers import assistant_tools_router
+from app.routers import files as files_router
 from app.services.moonraker import moonraker_manager
 from app.services.monitor import monitor
 from app.services.reporter import weekly_reporter
@@ -209,6 +210,7 @@ app.include_router(maintenance.router)
 app.include_router(spoolman.router)
 app.include_router(settings_router.router)
 app.include_router(assistant_tools_router.router)
+app.include_router(files_router.router)
 
 
 # WebSocket endpoint for frontend

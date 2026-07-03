@@ -382,6 +382,13 @@ class Dispatcher:
             if job:
                 job.copies_completed += 1
 
+                # Real filament consumed this print, from the Moonraker tracker.
+                client = moonraker_manager.get_client(printer_id)
+                actual_weight_g = (
+                    client.get_current_print_filament_grams(job.required_material)
+                    if client else None
+                )
+
                 # Create history entry
                 history = PrintHistory(
                     print_job_id=job.id,
@@ -389,11 +396,14 @@ class Dispatcher:
                     printer_name=printer.name if printer else "",
                     job_name=job.name,
                     gcode_filename=job.gcode_original_name,
+                    gcode_path=job.gcode_filename,
                     material=job.required_material,
                     required_nozzle=job.required_nozzle,
                     required_color=job.required_color,
                     required_filament_id=job.required_filament_id,
                     estimated_weight_g=job.estimated_weight_g,
+                    estimated_time_secs=job.estimated_time_secs,
+                    actual_weight_g=actual_weight_g,
                     started_at=job.started_at,
                     completed_at=datetime.now(timezone.utc),
                     duration_secs=printer.total_print_time_secs if printer else None,
@@ -449,17 +459,27 @@ class Dispatcher:
             )
             printer = result_q.scalar_one_or_none()
 
+            # Real filament consumed before the abort, from the Moonraker tracker.
+            client = moonraker_manager.get_client(printer_id)
+            actual_weight_g = (
+                client.get_current_print_filament_grams(job.required_material)
+                if client else None
+            )
+
             history = PrintHistory(
                 print_job_id=job.id,
                 printer_id=printer_id,
                 printer_name=printer.name if printer else "",
                 job_name=job.name,
                 gcode_filename=job.gcode_original_name,
+                gcode_path=job.gcode_filename,
                 material=job.required_material,
                 required_nozzle=job.required_nozzle,
                 required_color=job.required_color,
                 required_filament_id=job.required_filament_id,
                 estimated_weight_g=job.estimated_weight_g,
+                estimated_time_secs=job.estimated_time_secs,
+                actual_weight_g=actual_weight_g,
                 started_at=job.started_at,
                 completed_at=datetime.now(timezone.utc),
                 duration_secs=printer.total_print_time_secs if printer else None,
@@ -532,17 +552,23 @@ class Dispatcher:
 
                 # Stale → close it
                 result_kind = "failed" if printer.status == "error" else "success"
+                actual_weight_g = client.get_current_print_filament_grams(
+                    job.required_material
+                )
                 history = PrintHistory(
                     print_job_id=job.id,
                     printer_id=printer.id,
                     printer_name=printer.name,
                     job_name=job.name,
                     gcode_filename=job.gcode_original_name,
+                    gcode_path=job.gcode_filename,
                     material=job.required_material,
                     required_nozzle=job.required_nozzle,
                     required_color=job.required_color,
                     required_filament_id=job.required_filament_id,
                     estimated_weight_g=job.estimated_weight_g,
+                    estimated_time_secs=job.estimated_time_secs,
+                    actual_weight_g=actual_weight_g,
                     started_at=job.started_at,
                     completed_at=datetime.now(timezone.utc),
                     duration_secs=None,
