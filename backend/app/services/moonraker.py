@@ -20,7 +20,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session
 from app.models.printer import Printer
-from app.services.filament_tracking import FilamentTrackingState, step_filament_tracking
+from app.services.filament_tracking import (
+    FilamentTrackingState,
+    step_filament_tracking,
+    filament_mm_to_grams,
+)
 from app.services.telegram import telegram_notifier
 from app.version import APP_VERSION
 
@@ -48,6 +52,10 @@ class MoonrakerClient:
         self._last_display_progress: float = 0.0
         self._last_spoolman_update_time: float = 0.0
         self._syncing_filament: bool = False
+        # Highest raw Klipper filament_used (mm) seen during the CURRENT print,
+        # reset when a new print starts. Read at completion to record the real
+        # filament weight in history (independent of the Spoolman-sync buffer).
+        self._current_print_filament_mm: float = 0.0
 
         # ETA tracking
         self._last_print_duration: float = 0.0
@@ -59,6 +67,17 @@ class MoonrakerClient:
     @property
     def is_connected(self) -> bool:
         return self._connected
+
+    def get_current_print_filament_grams(self, material: Optional[str] = None) -> Optional[float]:
+        """Weight (g) of filament extruded in the current/just-finished print.
+
+        Converts the tracked per-print length (mm) via the material density
+        table. Returns None if nothing was tracked (e.g. the print was already
+        running before the manager connected).
+        """
+        if self._current_print_filament_mm <= 0:
+            return None
+        return round(filament_mm_to_grams(self._current_print_filament_mm, material), 2)
 
     def _next_id(self) -> int:
         self._request_id += 1
@@ -252,6 +271,13 @@ class MoonrakerClient:
                 self._filament_used_accumulated = new_state.accumulated
                 self._filament_tracking_initialized = new_state.initialized
 
+                # Track the per-print maximum so history can record real usage.
+                # Klipper's filament_used resets to ~0 on a new print; a reset
+                # (flush_pending) also means this reading belongs to a new print.
+                if was_initialized and not new_state.flush_pending:
+                    if current_used > self._current_print_filament_mm:
+                        self._current_print_filament_mm = current_used
+
                 if not was_initialized:
                     logger.debug(
                         f"[Printer {self.printer_id}] Filament init: baseline {current_used:.1f}mm"
@@ -293,6 +319,8 @@ class MoonrakerClient:
                         # New print started — reset ETA trackers
                         self._last_print_duration = 0.0
                         self._last_display_progress = 0.0
+                        # Reset per-print filament total for the new print.
+                        self._current_print_filament_mm = 0.0
                 elif new_state == "paused":
                     updates["status"] = "printing"  # Still show as printing
                 elif new_state == "complete":

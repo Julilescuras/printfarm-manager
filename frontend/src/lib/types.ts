@@ -65,6 +65,55 @@ export interface PrintJob {
 
 export type JobStatus = "pending" | "paused" | "printing" | "completed" | "cancelled";
 
+export type PrintResult = "success" | "failed" | "cancelled";
+
+export interface PrintHistoryEntry {
+  id: number;
+  print_job_id: number | null;
+  printer_id: number;
+  printer_name: string;
+  job_name: string;
+  gcode_filename: string;
+  gcode_path: string | null;
+  material: string;
+  required_nozzle: number | null;
+  required_color: string | null;
+  required_filament_id: number | null;
+  estimated_weight_g: number | null;
+  estimated_time_secs: number | null;
+  actual_weight_g: number | null;
+  started_at: string | null;
+  completed_at: string | null;
+  duration_secs: number | null;
+  result: PrintResult;
+}
+
+// ── File explorer (G-code storage) ──────────────────────────────────────────
+export interface FileNode {
+  name: string;
+  path: string; // relative to gcodes root, POSIX-style
+  size_bytes: number;
+  modified_at: string;
+}
+
+export interface FolderNode {
+  name: string;
+  path: string;
+  file_count: number;
+}
+
+export interface Breadcrumb {
+  name: string;
+  path: string;
+}
+
+export interface BrowseResult {
+  path: string;
+  breadcrumb: Breadcrumb[];
+  folders: FolderNode[];
+  files: FileNode[];
+}
+
 export interface MaintenanceRecord {
   id: number;
   printer_id: number;

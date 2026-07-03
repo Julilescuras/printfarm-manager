@@ -20,7 +20,48 @@ This module computes the per-update delta correctly: it ignores small dips
 reset (new print or Klipper restart).
 """
 
+import math
 from typing import NamedTuple
+
+
+# Typical filament densities (g/cm³) by material, used to convert an extruded
+# length (mm) into a weight (g) for the history "estimado vs real" comparison.
+# Values are approximate spool averages; good enough for a comparison bar.
+FILAMENT_DENSITY_G_CM3 = {
+    "PLA": 1.24,
+    "PETG": 1.27,
+    "ABS": 1.04,
+    "ASA": 1.07,
+    "TPU": 1.21,
+    "PC": 1.20,
+    "NYLON": 1.14,
+    "PA": 1.14,
+    "HIPS": 1.04,
+    "PVA": 1.23,
+    "PP": 0.90,
+}
+_DEFAULT_DENSITY_G_CM3 = 1.24  # fall back to PLA when the material is unknown
+
+
+def filament_mm_to_grams(
+    length_mm: float,
+    material: str | None = None,
+    diameter_mm: float = 1.75,
+) -> float:
+    """Convert an extruded filament length (mm) to a weight (g).
+
+    Uses a per-material density table (falling back to PLA) and the filament
+    diameter to compute the cross-section. Returns 0.0 for non-positive input.
+    """
+    if length_mm <= 0 or diameter_mm <= 0:
+        return 0.0
+    density = FILAMENT_DENSITY_G_CM3.get(
+        (material or "").strip().upper(), _DEFAULT_DENSITY_G_CM3
+    )
+    cross_section_mm2 = math.pi * (diameter_mm / 2.0) ** 2
+    volume_mm3 = length_mm * cross_section_mm2
+    # 1 cm³ = 1000 mm³; density is g/cm³ → grams = mm³ * density / 1000
+    return volume_mm3 * density / 1000.0
 
 
 class FilamentTrackingState(NamedTuple):
