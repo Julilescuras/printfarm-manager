@@ -93,8 +93,9 @@ class Monitor:
                 records = result.scalars().all()
 
                 # ── Live print-hour crediting ──────────────────────────────
-                # total_print_time_secs is Klipper's total_duration: it grows
-                # during a print and resets to ~0 when a new print starts. We
+                # total_print_time_secs is Klipper's print_duration (tiempo real
+                # de impresión, excluye pausas): crece durante un print y
+                # resetea a ~0 cuando empieza uno nuevo. We
                 # credit only the *new* seconds since the last poll (the delta),
                 # using maint_credited_secs as the high-water mark.
                 current = printer.total_print_time_secs or 0
