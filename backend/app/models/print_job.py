@@ -97,12 +97,20 @@ class PrintHistory(Base):
     printer_name: Mapped[str] = mapped_column(String(100), nullable=False, default="")
     job_name: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     gcode_filename: Mapped[str] = mapped_column(Text, nullable=False)
+    # Disk path of the stored G-code, snapshotted at print time so the file can
+    # be located/downloaded from history even if the original PrintJob is gone.
+    gcode_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     material: Mapped[str] = mapped_column(String(50), nullable=False, default="")
     # Nozzle + filament snapshot at print time (for display in the history table).
     required_nozzle: Mapped[float | None] = mapped_column(Float, nullable=True)
     required_color: Mapped[str | None] = mapped_column(String(50), nullable=True)
     required_filament_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     estimated_weight_g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Snapshot of the job's time estimate + the real filament actually extruded,
+    # for the "estimado vs real" comparison in the job detail panel. Only present
+    # for prints finished after this feature shipped (2.8.0).
+    estimated_time_secs: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    actual_weight_g: Mapped[float | None] = mapped_column(Float, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     duration_secs: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -119,11 +127,14 @@ class PrintHistory(Base):
             "printer_name": self.printer_name,
             "job_name": self.job_name,
             "gcode_filename": self.gcode_filename,
+            "gcode_path": self.gcode_path,
             "material": self.material,
             "required_nozzle": self.required_nozzle,
             "required_color": self.required_color,
             "required_filament_id": self.required_filament_id,
             "estimated_weight_g": self.estimated_weight_g,
+            "estimated_time_secs": self.estimated_time_secs,
+            "actual_weight_g": self.actual_weight_g,
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "duration_secs": self.duration_secs,

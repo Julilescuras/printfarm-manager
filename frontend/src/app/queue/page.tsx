@@ -27,8 +27,9 @@ import {
   Play,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import type { PrintJob } from "@/lib/types";
+import type { PrintJob, PrintHistoryEntry } from "@/lib/types";
 import { useWSContext } from "@/providers/websocket-provider";
+import { JobDetailModal } from "@/components/queue/job-detail-modal";
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "Pendiente",
@@ -525,6 +526,7 @@ function HistoryTable({
 }) {
   const [cloningId, setCloningId] = useState<number | null>(null);
   const [cloneCopies, setCloneCopies] = useState(1);
+  const [detail, setDetail] = useState<PrintHistoryEntry | null>(null);
 
   // Filter by the shared search box (job, printer, material, filament).
   const filtered = useMemo(() => {
@@ -570,6 +572,7 @@ function HistoryTable({
   };
 
   return (
+    <>
     <div className="glass-card overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -603,7 +606,19 @@ function HistoryTable({
                 entry.material,
               );
               return (
-              <tr key={entry.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
+              <tr
+                key={entry.id}
+                onClick={() => setDetail(entry as PrintHistoryEntry)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setDetail(entry as PrintHistoryEntry);
+                  }
+                }}
+                className="border-b border-border/50 hover:bg-secondary/30 transition-colors cursor-pointer focus:outline-none focus:bg-secondary/40"
+              >
                 <td className="p-3 font-medium">{entry.job_name || entry.gcode_filename}</td>
                 <td className="p-3 text-muted-foreground">{entry.printer_name || `#${entry.printer_id}`}</td>
                 <td className="p-3 text-muted-foreground">{entry.material || "-"}</td>
@@ -641,7 +656,7 @@ function HistoryTable({
                     <span className="text-muted-foreground">{entry.result}</span>
                   )}
                 </td>
-                <td className="p-3">
+                <td className="p-3" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-center gap-1">
                     {cloningId === entry.id ? (
                       <div className="flex items-center gap-2 animate-in fade-in">
@@ -688,6 +703,8 @@ function HistoryTable({
         </table>
       </div>
     </div>
+    {detail && <JobDetailModal entry={detail} onClose={() => setDetail(null)} />}
+    </>
   );
 }
 

@@ -2,6 +2,8 @@
  * API Client — Base fetch wrapper for backend API calls.
  */
 
+import type { BrowseResult, FileNode, PrintHistoryEntry } from "./types";
+
 let API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 if (typeof window !== "undefined") {
   if (API_BASE.includes("localhost") && window.location.hostname !== "localhost") {
@@ -133,7 +135,7 @@ export const api = {
   getQueue: (status?: string) =>
     apiFetch<any[]>(`/api/queue${status ? `?status=${encodeURIComponent(status)}` : ""}`),
   getHistory: (limit: number = 100) =>
-    apiFetch<any[]>(`/api/queue/history?limit=${limit}`),
+    apiFetch<PrintHistoryEntry[]>(`/api/queue/history?limit=${limit}`),
   addJob: (formData: FormData) =>
     apiFetch<any>("/api/queue", {
       method: "POST",
@@ -199,6 +201,20 @@ export const api = {
     apiFetch<void>(`/api/maintenance/${id}`, { method: "DELETE" }),
   resetAllMaintenance: () =>
     apiFetch<any>("/api/maintenance/reset-all", { method: "POST" }),
+
+  // Files (G-code explorer)
+  browseFiles: (path: string = "") =>
+    apiFetch<BrowseResult>(`/api/files/browse?path=${encodeURIComponent(path)}`),
+  searchFiles: (q: string) =>
+    apiFetch<{ files: FileNode[] }>(`/api/files/search?q=${encodeURIComponent(q)}`),
+  fileDownloadUrl: (path: string) =>
+    apiUrl(`/api/files/download?path=${encodeURIComponent(path)}`),
+  fileThumbnailUrl: (path: string) =>
+    apiUrl(`/api/files/thumbnail?path=${encodeURIComponent(path)}`),
+  historyDownloadUrl: (historyId: number) =>
+    apiUrl(`/api/files/history/${historyId}/download`),
+  historyThumbnailUrl: (historyId: number) =>
+    apiUrl(`/api/files/history/${historyId}/thumbnail`),
 
   // Danger zone
   purgeGcodes: () =>
