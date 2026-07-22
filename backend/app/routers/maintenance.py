@@ -135,6 +135,44 @@ async def reset_all_maintenance(db: AsyncSession = Depends(get_db)):
     }
 
 
+@router.post("/printer/{printer_id}/reset-all")
+async def reset_printer_maintenance(
+    printer_id: int,
+    data: MaintenanceResetRequest = MaintenanceResetRequest(),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reset every maintenance counter for a single printer. Each reset is
+    logged to the immutable history."""
+    result = await db.execute(
+        select(MaintenanceRecord).where(MaintenanceRecord.printer_id == printer_id)
+    )
+    records = result.scalars().all()
+
+    note = data.note or "Reinicio masivo de la impresora"
+    count = 0
+    for record in records:
+        db.add(MaintenanceLog(
+            record_id=record.id,
+            printer_id=record.printer_id,
+            maintenance_type=record.maintenance_type,
+            hours_at_reset=record.accumulated_hours,
+            note=note,
+        ))
+        record.accumulated_hours = 0.0
+        record.is_alert_active = False
+        record.last_reset_at = datetime.now(timezone.utc)
+        record.last_reset_note = note
+        count += 1
+
+    await db.commit()
+    await ws_hub.broadcast_maintenance_update()
+    return {
+        "status": "ok",
+        "reset_count": count,
+        "message": f"Se reiniciaron {count} contadores de mantenimiento",
+    }
+
+
 @router.post("/{record_id}/reset")
 async def reset_maintenance(
     record_id: int,
