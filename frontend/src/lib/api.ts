@@ -201,6 +201,12 @@ export const api = {
     apiFetch<void>(`/api/maintenance/${id}`, { method: "DELETE" }),
   resetAllMaintenance: () =>
     apiFetch<any>("/api/maintenance/reset-all", { method: "POST" }),
+  resetPrinterMaintenance: (printerId: number, note?: string) =>
+    apiFetch<any>(`/api/maintenance/printer/${printerId}/reset-all`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ note: note || null }),
+    }),
 
   // Files (G-code explorer)
   browseFiles: (path: string = "") =>
