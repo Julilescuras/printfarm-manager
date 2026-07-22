@@ -212,6 +212,42 @@ function ResetModal({ record, printerName, onConfirm, onClose }: {
   );
 }
 
+// ── Reset All (per printer) Modal ──────────────────────────────────────────
+function ResetAllModal({ printerName, taskCount, onConfirm, onClose }: {
+  printerName: string; taskCount: number;
+  onConfirm: (note: string) => void; onClose: () => void;
+}) {
+  const [note, setNote] = useState("");
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="glass-card w-full max-w-md mx-4 p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-amber-400" /> Resetear todas las alarmas
+          </h2>
+          <button onClick={onClose} className="p-2 hover:bg-secondary rounded-lg transition-colors"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 text-sm">
+          Se van a reiniciar los <strong>{taskCount}</strong> contadores de mantenimiento de <strong>{printerName}</strong> a cero. Esta acción queda registrada en el historial de cada tarea.
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1.5">Nota (opcional)</label>
+          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3}
+            placeholder="Ej: Service completo de la impresora..."
+            className="w-full px-3 py-2 rounded-lg bg-secondary border border-border focus:border-primary outline-none resize-none text-sm"
+          />
+        </div>
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 py-2 rounded-lg bg-secondary text-sm font-medium">Cancelar</button>
+          <button onClick={() => onConfirm(note)} className="flex-1 py-2 rounded-lg bg-amber-500 text-black text-sm font-semibold hover:bg-amber-400 transition-colors">
+            <RotateCcw className="w-3.5 h-3.5 inline mr-1.5" /> Resetear todo
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── History Modal ──────────────────────────────────────────────────────────
 function HistoryModal({ record, printerName, onClose }: {
   record: MaintenanceRecord; printerName: string; onClose: () => void;
@@ -266,6 +302,7 @@ export default function MaintenancePage() {
   const [historyTarget, setHistoryTarget] = useState<MaintenanceRecord | null>(null);
   const [editTarget, setEditTarget] = useState<MaintenanceRecord | null>(null);
   const [addingForPrinter, setAddingForPrinter] = useState<number | null>(null);
+  const [resetAllTarget, setResetAllTarget] = useState<number | null>(null);
   const { printers } = useWSContext();
 
   const fetchRecords = useCallback(async () => {
@@ -318,6 +355,12 @@ export default function MaintenancePage() {
     const { label } = getDisplay(record);
     if (!window.confirm(`¿Eliminar "${label}"? Se borrará su historial también.`)) return;
     await api.deleteMaintenance(record.id);
+    fetchRecords();
+  };
+
+  const handleResetAll = async (printerId: number, note: string) => {
+    await api.resetPrinterMaintenance(printerId, note || undefined);
+    setResetAllTarget(null);
     fetchRecords();
   };
 
@@ -446,12 +489,23 @@ export default function MaintenancePage() {
                     )}
                   </p>
                 </div>
-                <button
-                  onClick={() => setAddingForPrinter(selectedPrinter.id)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/15 text-primary text-xs font-medium hover:bg-primary/25 transition-colors border border-primary/30"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Agregar tarea
-                </button>
+                <div className="flex items-center gap-2">
+                  {selectedRecords.length > 0 && (
+                    <button
+                      onClick={() => setResetAllTarget(selectedPrinter.id)}
+                      title="Resetear todas las alarmas de esta impresora"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/15 text-amber-400 text-xs font-medium hover:bg-amber-500/25 transition-colors border border-amber-500/30"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" /> Resetear todo
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setAddingForPrinter(selectedPrinter.id)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/15 text-primary text-xs font-medium hover:bg-primary/25 transition-colors border border-primary/30"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Agregar tarea
+                  </button>
+                </div>
               </div>
 
               {/* Task list — compact grid (2 cols on wide screens) */}
@@ -593,6 +647,14 @@ export default function MaintenancePage() {
           record={historyTarget}
           printerName={printers.find((p) => p.id === historyTarget.printer_id)?.name || ""}
           onClose={() => setHistoryTarget(null)}
+        />
+      )}
+      {resetAllTarget !== null && (
+        <ResetAllModal
+          printerName={printers.find((p) => p.id === resetAllTarget)?.name || ""}
+          taskCount={records.filter((r) => r.printer_id === resetAllTarget).length}
+          onConfirm={(note) => handleResetAll(resetAllTarget, note)}
+          onClose={() => setResetAllTarget(null)}
         />
       )}
     </div>
