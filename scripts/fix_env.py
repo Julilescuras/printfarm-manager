@@ -1,17 +1,10 @@
-import paramiko
+from _ssh import connect
 import sys
 
 def fix_env():
-    hostname = '100.88.227.10'
-    username = 'ziegelimpresoras3D'
-    password = '***REMOVED***'
-
-    print(f"Conectando a {hostname}...")
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    
+    client = None
     try:
-        client.connect(hostname, username=username, password=password, timeout=10)
+        client = connect()
         
         # Reescribir .env con \n
         cmd = """
@@ -27,7 +20,8 @@ def fix_env():
     except Exception as e:
         print(f"Error de conexión: {e}")
     finally:
-        client.close()
+        if client:
+            client.close()
 
 if __name__ == '__main__':
     fix_env()
