@@ -885,11 +885,11 @@ export default function SettingsPage() {
                     type="text"
                     value={assistantActionPin}
                     onChange={(e) => setAssistantActionPin(e.target.value)}
-                    placeholder="ej. ***REMOVED***"
+                    placeholder="ej. una frase que solo sepas vos"
                     className="w-full px-3 py-2 rounded-lg bg-secondary border border-border focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all text-sm font-mono"
                   />
                   <p className="text-xs text-muted-foreground mt-1">
-                    La decís dentro del mensaje, ej.: «poné a calentar la i4 para PLA, clave ***REMOVED***».
+                    La decís dentro del mensaje, ej.: «poné a calentar la i4 para PLA, clave &lt;tu-clave&gt;».
                     El bot la borra del texto y siempre te pide confirmar antes de ejecutar.
                   </p>
                 </div>
