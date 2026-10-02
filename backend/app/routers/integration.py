@@ -13,6 +13,7 @@ Contract (summarised in CLAUDE.md → "Integración con Control Ventas"):
   POST /library            multipart (same fields as /api/library)
   PUT  /library/{id}       JSON LibraryEntryUpdate
   POST /library/mark-review {product_key, stl_fingerprint, size?}
+  POST /library/rekey      {from, to}  (renombre/fusión de carpeta en CV)
   POST /jobs               {library_id, copies, priority, order_id, line_id, order_ref, paused}
   GET  /jobs               ?order_id (required) &line_id
   GET  /events             ?after=<id>&limit=<n>
@@ -39,6 +40,8 @@ from app.schemas.library import (
     LibraryEntryUpdate,
     MarkReviewRequest,
     MarkReviewResponse,
+    RekeyRequest,
+    RekeyResponse,
     ParseOrderLine,
     ParseOrderRequest,
     ParseOrderResponse,
@@ -108,9 +111,10 @@ async def integration_list_library(
     status: Optional[str] = None,
     printer_model: Optional[str] = None,
     size: Optional[str] = None,
+    product_id: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
-    entries = await lib.list_entries(db, product_key, status, printer_model, size)
+    entries = await lib.list_entries(db, product_key, status, printer_model, size, product_id)
     return [lib.entry_to_dict(e) for e in entries]
 
 
@@ -119,6 +123,14 @@ async def integration_mark_review(data: MarkReviewRequest, db: AsyncSession = De
     """CV detected the STL changed: approved entries of that product (and size,
     if given) with a different fingerprint → review."""
     updated = await lib.mark_review(db, data.product_key, data.stl_fingerprint, data.size)
+    return {"updated": updated}
+
+
+@router.post("/library/rekey", response_model=RekeyResponse)
+async def integration_rekey_library(data: RekeyRequest, db: AsyncSession = Depends(get_db)):
+    """CV renamed / moved / merged a product folder: entries of ``from`` (and
+    its sub-keys) move to ``to`` so their G-codes don't end up orphaned."""
+    updated = await lib.rekey(db, data.from_key, data.to)
     return {"updated": updated}
 
 

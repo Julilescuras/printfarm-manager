@@ -91,11 +91,11 @@ frontend/src/
 - **Eventos** (`integration_events`, `services/integration_events.emit` en la MISMA sesión del
   cambio; retención 30 días): `job.created`, `job.started`, `job.completed` (`units`,
   `units_completed`), `job.failed`, `job.cancelled`, `job.requeued`, `bed.cleared` (`outcome`),
-  `library.status_changed` (`old_status`, `status`, `reason`). Puntos de emisión: dispatcher
+  `library.status_changed` (`old_status`, `status`, `reason`), `library.rekeyed` (`old_product_key`). Puntos de emisión: dispatcher
   (`_dispatch_job`, `on_print_complete`, `on_print_aborted`, `reconcile_stale_jobs`), routers
   print_queue/printers/library y la tool del bot que vacía camas.
 - **Endpoints integración:** `ping`, `printers`, `library` (GET/POST/PUT, `{id}`),
-  `library/mark-review`, `jobs` (POST desde `library_id`, GET `?order_id`), `events?after=&limit=`,
+  `library/mark-review`, `library/rekey` (`{from, to}`: CV renombró/fusionó la carpeta), `jobs` (POST desde `library_id`, GET `?order_id`), `events?after=&limit=`,
   `assistant/parse-order` (factory LLM; 503 sin motor, 502 si el modelo falla).
 - **Telegram:** al completar un job con `order_id` agrega "Pedido X: n/m impresos" (placas).
 

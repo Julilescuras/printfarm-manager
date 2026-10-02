@@ -112,10 +112,13 @@ async def list_entries(
     status: Optional[str] = None,
     printer_model: Optional[str] = None,
     size: Optional[str] = None,
+    product_id: Optional[str] = None,
 ) -> list[GcodeLibrary]:
     q = select(GcodeLibrary)
     if product_key:
         q = q.where(GcodeLibrary.product_key == product_key)
+    if product_id:
+        q = q.where(GcodeLibrary.product_id == product_id)
     if status:
         statuses = [s.strip() for s in status.split(",") if s.strip()]
         if statuses:
@@ -404,6 +407,39 @@ async def enqueue_entry(
     if not paused:
         await dispatcher.try_dispatch_all()
     return jobs
+
+
+def _last_segment(key: str) -> str:
+    return key.rstrip("/").rsplit("/", 1)[-1]
+
+
+async def rekey(db: AsyncSession, from_key: str, to_key: str) -> list[int]:
+    """CV renamed/moved/merged a product folder: entries whose ``product_key``
+    is ``from_key`` or lives under it (``from_key/...``) move to ``to_key``
+    (keeping the suffix). ``product_name`` follows when it was the old folder
+    name. The G-code file stays where it is (``gcode_path`` is absolute).
+    Emits ``library.rekeyed`` per entry. Idempotent (nothing left → [])."""
+    from_key = from_key.strip().strip("/")
+    to_key = to_key.strip().strip("/")
+    if not from_key or not to_key or from_key == to_key:
+        return []
+    prefix = from_key + "/"
+    q = select(GcodeLibrary).where(
+        (GcodeLibrary.product_key == from_key) | (GcodeLibrary.product_key.startswith(prefix, autoescape=True))
+    )
+    updated: list[int] = []
+    for entry in (await db.execute(q)).scalars().all():
+        old_key = entry.product_key
+        new_key = to_key + old_key[len(from_key):]
+        entry.product_key = new_key
+        if entry.product_name == _last_segment(old_key):
+            entry.product_name = _last_segment(new_key)
+        payload = _status_payload(entry, entry.status, "rekey")
+        payload["old_product_key"] = old_key
+        emit(db, "library.rekeyed", payload)
+        updated.append(entry.id)
+    await db.commit()
+    return updated
 
 
 async def mark_review(

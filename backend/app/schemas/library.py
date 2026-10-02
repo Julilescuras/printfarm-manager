@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 LibraryStatus = Literal["draft", "testing", "approved", "rejected", "review"]
 
@@ -83,6 +83,18 @@ class MarkReviewRequest(BaseModel):
 
 
 class MarkReviewResponse(BaseModel):
+    updated: List[int]
+
+
+class RekeyRequest(BaseModel):
+    """CV renamed/moved a product folder: move its entries to the new key."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    from_key: str = Field(..., alias="from", min_length=1)
+    to: str = Field(..., min_length=1)
+
+
+class RekeyResponse(BaseModel):
     updated: List[int]
 
 
