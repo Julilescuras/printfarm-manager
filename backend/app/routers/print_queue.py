@@ -21,12 +21,15 @@ from app.ws.hub import ws_hub
 from app.services.gcode_parser import parse_gcode
 from app.services.dispatcher import dispatcher
 from app.security import gcodes_root, is_within, sanitize_filename, sanitize_material
+from app.services.gcode_storage import GCODE_EXTS, stream_upload_to_disk
+from app.services.integration_events import emit, job_payload
 
 router = APIRouter(prefix="/api/queue", tags=["queue"])
 
 
-_GCODE_EXTS = (".gcode", ".gco", ".g")
-_COPY_CHUNK = 1024 * 1024  # 1 MB
+# Shared with the G-code library (services/gcode_storage.py).
+_GCODE_EXTS = GCODE_EXTS
+_stream_upload_to_disk = stream_upload_to_disk
 
 
 def _organize_gcode_path(material: str, original_name: str) -> str:
@@ -61,37 +64,6 @@ def _organize_gcode_path(material: str, original_name: str) -> str:
     if not is_within(root, os.path.realpath(full_path)):
         raise HTTPException(status_code=400, detail="Ruta de destino inválida")
     return full_path
-
-
-def _stream_upload_to_disk(src, dest_path: str, max_bytes: int) -> int:
-    """Copy an upload's file object to ``dest_path`` in 1 MB chunks.
-
-    Never holds the whole file in memory. Returns the number of bytes written,
-    or raises ValueError (after deleting the partial file) if the upload is
-    larger than ``max_bytes``.
-    """
-    written = 0
-    try:
-        src.seek(0)
-    except Exception:
-        pass
-    try:
-        with open(dest_path, "wb") as out:
-            while True:
-                chunk = src.read(_COPY_CHUNK)
-                if not chunk:
-                    break
-                written += len(chunk)
-                if written > max_bytes:
-                    raise ValueError("too_large")
-                out.write(chunk)
-    except BaseException:
-        try:
-            os.remove(dest_path)
-        except OSError:
-            pass
-        raise
-    return written
 
 
 @router.get("", response_model=List[PrintJobResponse])
@@ -218,6 +190,9 @@ async def add_job(
         db.add(job)
         created_jobs.append(job)
 
+    await db.flush()
+    for job in created_jobs:
+        emit(db, "job.created", job_payload(job))
     await db.commit()
     for job in created_jobs:
         await db.refresh(job)
@@ -387,6 +362,7 @@ async def cancel_job(job_id: int, db: AsyncSession = Depends(get_db)):
     # Hard-delete the queue item. The shared G-code file on disk is intentionally
     # left untouched (other copies may reference it; use 'vaciar G-codes' in
     # Configuración to clean storage).
+    emit(db, "job.cancelled", job_payload(job, result="deleted", deleted=True))
     await db.delete(job)
     await db.commit()
     await ws_hub.broadcast_queue_update()
@@ -427,6 +403,9 @@ async def clone_job(job_id: int, copies: int = 1, db: AsyncSession = Depends(get
         db.add(new_job)
         created.append(new_job)
 
+    await db.flush()
+    for job in created:
+        emit(db, "job.created", job_payload(job, cloned_from=src.id))
     await db.commit()
     for job in created:
         await db.refresh(job)
@@ -512,6 +491,7 @@ async def requeue_job(job_id: int, db: AsyncSession = Depends(get_db)):
     job.status = "pending"
     job.copies_completed = 0
     job.assigned_printer_id = None
+    emit(db, "job.requeued", job_payload(job))
     await db.commit()
     await db.refresh(job)
     await ws_hub.broadcast_queue_update()
@@ -578,6 +558,8 @@ async def clone_from_history(
         )
 
     db.add(new_job)
+    await db.flush()
+    emit(db, "job.created", job_payload(new_job, cloned_from=original_job.id))
     await db.commit()
     await db.refresh(new_job)
 

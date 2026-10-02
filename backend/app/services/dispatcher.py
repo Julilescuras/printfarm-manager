@@ -33,11 +33,35 @@ from app.models.maintenance import MaintenanceRecord
 from app.models.settings import AppSettings
 from app.services.moonraker import moonraker_manager
 from app.services.spoolman import spoolman_client
+from app.services.integration_events import emit, job_payload
 from app.config import settings
 
 logger = logging.getLogger("printfarm.dispatcher")
 
 AUTO_DISPATCH_INTERVAL = 30  # seconds
+
+
+def _history_integration_fields(job: PrintJob) -> dict:
+    """Integration snapshot copied from the job into every PrintHistory row."""
+    return {
+        "library_id": job.library_id,
+        "order_id": job.order_id,
+        "line_id": job.line_id,
+        "order_ref": job.order_ref,
+        "is_test": bool(job.is_test),
+    }
+
+
+async def _units_per_plate(session: AsyncSession, job: PrintJob) -> int:
+    """Units one plate of ``job`` produces (from its library entry, else 1)."""
+    if not job.library_id:
+        return 1
+    from app.models.gcode_library import GcodeLibrary
+    result = await session.execute(
+        select(GcodeLibrary.units_per_plate).where(GcodeLibrary.id == job.library_id)
+    )
+    value = result.scalar_one_or_none()
+    return max(1, int(value or 1))
 
 
 class Dispatcher:
@@ -349,6 +373,9 @@ class Dispatcher:
         printer.current_filename = gcode_name
         printer.current_job_progress = 0.0
 
+        emit(session, "job.started", job_payload(
+            job, printer_id=printer.id, printer_name=printer.name,
+        ))
         await session.commit()
 
         logger.info(
@@ -356,10 +383,14 @@ class Dispatcher:
         )
         return True
 
-    async def on_print_complete(self, printer_id: int):
+    async def on_print_complete(self, printer_id: int) -> Optional[dict]:
         """
         Called when a print completes. Updates the job record,
         creates a history entry, and checks if more copies are needed.
+
+        Returns a summary of the closed job (``job_id``, ``name``, ``order_id``,
+        ``order_ref``, ``is_test``…) or None when there was no printing job
+        (idempotent second call from clear-bed).
         """
         async with async_session() as session:
             # Find the active job on this printer
@@ -408,6 +439,7 @@ class Dispatcher:
                     completed_at=datetime.now(timezone.utc),
                     duration_secs=printer.total_print_time_secs if printer else None,
                     result="success",
+                    **_history_integration_fields(job),
                 )
                 session.add(history)
 
@@ -425,12 +457,30 @@ class Dispatcher:
                     logger.info(
                         f"Job '{job.name}' completed copy {job.copies_completed}/{job.copies}"
                     )
+                units = await _units_per_plate(session, job)
+                emit(session, "job.completed", job_payload(
+                    job,
+                    printer_id=printer_id,
+                    printer_name=printer.name if printer else "",
+                    units=units,
+                    units_completed=job.copies_completed * units,
+                ))
+                summary = {
+                    "job_id": job.id,
+                    "name": job.name,
+                    "order_id": job.order_id,
+                    "order_ref": job.order_ref,
+                    "is_test": bool(job.is_test),
+                    "library_id": job.library_id,
+                }
                 await session.commit()
 
                 # Refresh the queue UI (this runs both when the print finishes
                 # and when the bed is cleared; the second call is a harmless no-op)
                 from app.ws.hub import ws_hub
                 await ws_hub.broadcast_queue_update()
+                return summary
+        return None
 
     async def on_print_aborted(self, printer_id: int, result: str = "cancelled"):
         """
@@ -484,10 +534,15 @@ class Dispatcher:
                 completed_at=datetime.now(timezone.utc),
                 duration_secs=printer.total_print_time_secs if printer else None,
                 result=result,
+                **_history_integration_fields(job),
             )
             session.add(history)
 
             job.status = "cancelled"
+            emit(session, "job.failed" if result == "failed" else "job.cancelled",
+                 job_payload(job, printer_id=printer_id,
+                             printer_name=printer.name if printer else "",
+                             result=result))
             job.assigned_printer_id = None
             await session.commit()
             logger.info(f"Job '{job.name}' marked {result} on printer {printer_id}")
@@ -523,6 +578,8 @@ class Dispatcher:
                 # No printer assigned → orphan; just cancel (no history)
                 if printer is None:
                     job.status = "cancelled"
+                    emit(session, "job.cancelled",
+                         job_payload(job, result="cancelled", reason="orphan"))
                     job.assigned_printer_id = None
                     changed = True
                     logger.info(f"Reconcile: job '{job.name}' had no printer → cancelled")
@@ -576,13 +633,24 @@ class Dispatcher:
                     completed_at=datetime.now(timezone.utc),
                     duration_secs=None,
                     result=result_kind,
+                    **_history_integration_fields(job),
                 )
                 session.add(history)
                 if result_kind == "success":
                     job.copies_completed = job.copies
                     job.status = "completed"
+                    units = await _units_per_plate(session, job)
+                    emit(session, "job.completed", job_payload(
+                        job, printer_id=printer.id, printer_name=printer.name,
+                        units=units, units_completed=job.copies_completed * units,
+                        reconciled=True,
+                    ))
                 else:
                     job.status = "cancelled"
+                    emit(session, "job.failed", job_payload(
+                        job, printer_id=printer.id, printer_name=printer.name,
+                        result="failed", reconciled=True,
+                    ))
                 job.assigned_printer_id = None
                 changed = True
                 logger.info(

@@ -71,14 +71,32 @@ class TelegramNotifier:
 
     # --- Pre-built notification messages ---
 
-    async def notify_print_complete(self, printer_name: str, job_name: str):
-        """Notify that a print job has completed."""
-        await self.send_message(
-            f"✅ <b>Impresión completada</b>\n"
-            f"📄 {job_name}\n"
-            f"🖨️ {printer_name}\n"
-            f"🧹 La cama necesita ser vaciada."
-        )
+    async def notify_print_complete(
+        self,
+        printer_name: str,
+        job_name: str,
+        order_line: Optional[str] = None,
+        is_test: bool = False,
+    ):
+        """Notify that a print job has completed.
+
+        ``order_line`` ("Pedido Andy: 3/5 impresos") is added when the job came
+        from a Control Ventas order; ``is_test`` flags a library test print so
+        the operator knows to record whether it came out right.
+        """
+        from html import escape
+
+        lines = [
+            "✅ <b>Impresión completada</b>",
+            f"📄 {escape(job_name)}",
+            f"🖨️ {escape(printer_name)}",
+        ]
+        if order_line:
+            lines.append(f"📦 {escape(order_line)}")
+        if is_test:
+            lines.append("🧪 Era una prueba: al vaciar la cama indicá si salió bien.")
+        lines.append("🧹 La cama necesita ser vaciada.")
+        await self.send_message("\n".join(lines))
 
     async def notify_printer_error(self, printer_name: str):
         """Notify that a printer has an error."""

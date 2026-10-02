@@ -387,15 +387,10 @@ class MoonrakerClient:
                         # so a finished print leaves the "En Impresión" tab even
                         # before the bed is cleared. Idempotent: clearing the bed
                         # later calls this again and it becomes a no-op.
-                        from app.services.dispatcher import dispatcher
-                        asyncio.create_task(
-                            dispatcher.on_print_complete(self.printer_id)
-                        )
-
-                        # Send Telegram notification
-                        asyncio.create_task(
-                            self._notify_print_complete()
-                        )
+                        # Then send the Telegram notification (sequenced after
+                        # closing the job so it can include the order progress
+                        # "Pedido X: n/m impresos").
+                        asyncio.create_task(self._complete_and_notify())
                 elif new_state == "cancelled":
                     # Print aborted from Klipper/Fluidd (or via our own cancel).
                     # Flush any remaining filament, then move the printer to
@@ -668,7 +663,20 @@ class MoonrakerClient:
 
     # --- Telegram notification helpers ---
 
-    async def _notify_print_complete(self):
+    async def _complete_and_notify(self):
+        """Close the finished job (queue + history + job.completed event) and
+        then notify Telegram, including the order progress when the job came
+        from a Control Ventas order."""
+        from app.services.dispatcher import dispatcher
+
+        closed = None
+        try:
+            closed = await dispatcher.on_print_complete(self.printer_id)
+        except Exception as e:
+            logger.error(f"Error closing completed job: {e}", exc_info=True)
+        await self._notify_print_complete(closed)
+
+    async def _notify_print_complete(self, closed: Optional[dict] = None):
         """Send Telegram notification for print completion."""
         try:
             async with async_session() as session:
@@ -676,11 +684,22 @@ class MoonrakerClient:
                     select(Printer).where(Printer.id == self.printer_id)
                 )
                 printer = result.scalar_one_or_none()
-                if printer:
-                    job_name = printer.current_filename or "Archivo desconocido"
-                    await telegram_notifier.notify_print_complete(
-                        printer.name, job_name
-                    )
+                if not printer:
+                    return
+                job_name = printer.current_filename or "Archivo desconocido"
+                order_line = None
+                is_test = False
+                if closed:
+                    job_name = closed.get("name") or job_name
+                    is_test = bool(closed.get("is_test"))
+                    if closed.get("order_id"):
+                        from app.services.library import order_progress
+                        done, total = await order_progress(session, closed["order_id"])
+                        label = closed.get("order_ref") or closed["order_id"]
+                        order_line = f"Pedido {label}: {done}/{total} impresos"
+            await telegram_notifier.notify_print_complete(
+                printer.name, job_name, order_line=order_line, is_test=is_test
+            )
         except Exception as e:
             logger.error(f"Error sending Telegram notification: {e}")
 
