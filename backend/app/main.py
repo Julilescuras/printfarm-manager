@@ -29,6 +29,7 @@ from app.routers import settings_router
 from app.routers import assistant_tools_router
 from app.routers import files as files_router
 from app.routers import integration as integration_router
+from app.routers import library as library_router
 from app.services.moonraker import moonraker_manager
 from app.services.monitor import monitor
 from app.services.reporter import weekly_reporter
@@ -125,6 +126,9 @@ async def lifespan(app: FastAPI):
     from app.security import get_integration_token
     async with async_session() as session:
         await get_integration_token(session)
+        # Integration event retention (30 days)
+        from app.services.integration_events import prune_old_events
+        await prune_old_events(session, force=True)
 
     # 2. Seed printers from config
     await _seed_printers_from_config()
@@ -218,6 +222,7 @@ app.include_router(settings_router.router)
 app.include_router(assistant_tools_router.router)
 app.include_router(files_router.router)
 app.include_router(integration_router.router)
+app.include_router(library_router.router)
 
 
 # WebSocket endpoint for frontend

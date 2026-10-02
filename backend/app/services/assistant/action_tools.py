@@ -179,6 +179,9 @@ async def vaciar_cama(impresora: str) -> dict[str, Any]:
             printer.current_job_progress = 0.0
             printer.current_filename = None
             printer.thumbnail_url = None
+            # No verdict from the bot: just the bed.cleared integration event.
+            from app.services.library import record_bed_cleared
+            await record_bed_cleared(session, printer)
             await session.commit()
             await session.refresh(printer)
             await _broadcast(printer)

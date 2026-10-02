@@ -4,7 +4,7 @@ The clear-bed endpoint is the critical "Vaciar Cama" action.
 """
 
 import asyncio
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -16,6 +16,8 @@ from app.models.printer import Printer
 from app.models.print_job import PrintJob
 from app.models.maintenance import MaintenanceRecord
 from app.schemas.printer import PrinterCreate, PrinterUpdate, PrinterResponse, PrinterAssignSpool, PrinterSetStatus
+from app.schemas.library import ClearBedRequest
+from app.services.library import record_bed_cleared
 from app.services.moonraker import moonraker_manager
 from app.services.dispatcher import dispatcher
 from app.services.gcode_thumbnail import extract_gcode_thumbnail
@@ -195,11 +197,20 @@ async def get_printer_thumbnail(printer_id: int, db: AsyncSession = Depends(get_
 
 
 @router.post("/{printer_id}/clear-bed")
-async def clear_bed(printer_id: int, db: AsyncSession = Depends(get_db)):
+async def clear_bed(
+    printer_id: int,
+    body: Optional[ClearBedRequest] = None,
+    db: AsyncSession = Depends(get_db),
+):
     """
     🧹 VACIAR CAMA — The critical bed clearance action.
     Changes status from 'requires_clearance' to 'available',
     then triggers the dispatcher to send the next compatible job.
+
+    Optional body ``{outcome: "ok"|"bad", note?}``: stored on the printer's
+    last history row; if that print was a library test (is_test) it approves
+    (ok) or rejects (bad, note → library notes) the library entry. Always
+    emits the ``bed.cleared`` integration event.
     """
     result = await db.execute(select(Printer).where(Printer.id == printer_id))
     printer = result.scalar_one_or_none()
@@ -223,6 +234,11 @@ async def clear_bed(printer_id: int, db: AsyncSession = Depends(get_db)):
     printer.current_job_progress = 0.0
     printer.current_filename = None
     printer.thumbnail_url = None
+    verdict = await record_bed_cleared(
+        db, printer,
+        outcome=body.outcome if body else None,
+        note=body.note if body else None,
+    )
     await db.commit()
     await db.refresh(printer)
 
@@ -237,6 +253,8 @@ async def clear_bed(printer_id: int, db: AsyncSession = Depends(get_db)):
         "status": "ok",
         "printer_status": printer.status if not dispatched else "printing",
         "dispatched": dispatched,
+        "outcome": verdict["outcome"],
+        "library_status": verdict["library_status"],
         "message": "Cama vaciada" + (" — nuevo trabajo enviado" if dispatched else " — sin trabajos pendientes compatibles"),
     }
 
