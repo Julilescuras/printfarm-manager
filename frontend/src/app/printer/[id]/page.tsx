@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { useWSContext } from "@/providers/websocket-provider";
 import { api } from "@/lib/api";
-import { getStatusInfo, formatDuration } from "@/lib/utils";
+import { getStatusInfo, formatDuration, hasActivePrint } from "@/lib/utils";
 import { PrinterMediaView } from "@/components/dashboard/printer-media-view";
 
 export default function PrinterDetailsPage() {
@@ -231,10 +231,12 @@ export default function PrinterDetailsPage() {
 
           <div className="glass-card p-6">
             <h2 className="text-lg font-bold mb-4">Acciones</h2>
-            {printer.status === "printing" ? (
+            {hasActivePrint(printer) ? (
               <div className="space-y-3">
                 <p className="text-xs text-muted-foreground">
-                  No se puede cambiar el estado manualmente mientras imprime.
+                  {printer.status === "paused"
+                    ? "Impresión pausada en Klipper. No se puede cambiar el estado manualmente hasta que termine o se cancele."
+                    : "No se puede cambiar el estado manualmente mientras imprime."}
                 </p>
                 <button
                   onClick={handleCancelPrint}
@@ -301,7 +303,7 @@ export default function PrinterDetailsPage() {
             <FileCode className="w-5 h-5 text-primary" /> Progreso de Impresión
           </h2>
 
-          {printer.status === "printing" ? (
+          {hasActivePrint(printer) ? (
             <div className="space-y-6 mt-6">
               <div className="text-center space-y-2">
                 <div className="text-5xl font-bold text-primary">
@@ -355,7 +357,7 @@ export default function PrinterDetailsPage() {
 
         {/* Camera / G-code preview (with toggle when both available) */}
         {(printer.camera_url ||
-          printer.status === "printing" ||
+          hasActivePrint(printer) ||
           printer.disconnected_while_printing) && (
           <div className="glass-card p-6 md:col-span-3">
             <h2 className="text-lg font-bold mb-4 flex items-center gap-2">

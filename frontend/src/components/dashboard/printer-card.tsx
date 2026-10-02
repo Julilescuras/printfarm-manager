@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { Trash2, Clock, FileCode, Box } from "lucide-react";
 import type { PrinterState } from "@/lib/types";
-import { getStatusInfo, formatDuration } from "@/lib/utils";
+import { getStatusInfo, formatDuration, hasActivePrint } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { ProgressRing } from "./progress-ring";
 import { TemperatureGauge } from "./temperature-gauge";
@@ -61,8 +61,8 @@ export const PrinterCard = React.memo(function PrinterCard({ printer, onUpdate }
         </div>
       </div>
 
-      {/* Print Progress (shown only when actively printing) */}
-      {printer.status === "printing" && (
+      {/* Print Progress (shown while printing or paused by Klipper) */}
+      {hasActivePrint(printer) && (
         <div className="flex items-center gap-4">
           <ProgressRing progress={printer.current_job_progress} size={72} />
           <div className="flex-1 min-w-0 space-y-1">

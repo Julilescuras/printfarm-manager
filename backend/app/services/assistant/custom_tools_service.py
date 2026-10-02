@@ -44,8 +44,8 @@ def _make_printer_handler(tool_name: str, gcode: str):
             targets = await match_printers(session, impresora)
             if not targets:
                 return {"error": f"No encontré ninguna impresora que coincida con '{impresora}'."}
-            candidatas = [(p.id, p.name) for p in targets if p.status != "printing"]
-            imprimiendo = [p.name for p in targets if p.status == "printing"]
+            candidatas = [(p.id, p.name) for p in targets if not moonraker_manager.has_active_print(p.id, p.status)]
+            imprimiendo = [p.name for p in targets if moonraker_manager.has_active_print(p.id, p.status)]
 
         if not candidatas:
             return {

@@ -379,10 +379,16 @@ async def reanudar_impresion(impresora: str) -> dict[str, Any]:
         targets = await match_printers(session, impresora)
         if not targets:
             return {"error": f"No encontré ninguna impresora que coincida con '{impresora}'."}
-        pausadas = [(p.id, p.name) for p in targets if p.status == "paused"]
+        # Only a KLIPPER pause can be resumed. A DB 'paused' alone may be a
+        # manual hold on an idle printer (nothing to resume there).
+        def _klipper_paused(p) -> bool:
+            client = moonraker_manager.get_client(p.id)
+            return bool(client and client.klipper_state == "paused")
+
+        pausadas = [(p.id, p.name) for p in targets if _klipper_paused(p)]
         no_pausadas = [
             {"impresora": p.name, "estado": _label(p.status)}
-            for p in targets if p.status != "paused"
+            for p in targets if not _klipper_paused(p)
         ]
 
     if not pausadas:
@@ -440,8 +446,8 @@ async def precalentar(impresora: str, material: str) -> dict[str, Any]:
         targets = await match_printers(session, impresora)
         if not targets:
             return {"error": f"No encontré ninguna impresora que coincida con '{impresora}'."}
-        candidatas = [(p.id, p.name) for p in targets if p.status != "printing"]
-        imprimiendo = [p.name for p in targets if p.status == "printing"]
+        candidatas = [(p.id, p.name) for p in targets if not moonraker_manager.has_active_print(p.id, p.status)]
+        imprimiendo = [p.name for p in targets if moonraker_manager.has_active_print(p.id, p.status)]
 
     if not candidatas:
         return {
@@ -488,8 +494,8 @@ async def enfriar(impresora: str) -> dict[str, Any]:
         targets = await match_printers(session, impresora)
         if not targets:
             return {"error": f"No encontré ninguna impresora que coincida con '{impresora}'."}
-        candidatas = [(p.id, p.name) for p in targets if p.status != "printing"]
-        imprimiendo = [p.name for p in targets if p.status == "printing"]
+        candidatas = [(p.id, p.name) for p in targets if not moonraker_manager.has_active_print(p.id, p.status)]
+        imprimiendo = [p.name for p in targets if moonraker_manager.has_active_print(p.id, p.status)]
 
     if not candidatas:
         return {
@@ -529,7 +535,7 @@ async def cancelar_impresion(impresora: str) -> dict[str, Any]:
         printer, err = await resolve_one_printer(session, impresora)
         if err:
             return err
-        if printer.status != "printing":
+        if not moonraker_manager.has_active_print(printer.id, printer.status):
             return {"error": f"{printer.name} no está imprimiendo (está: {_label(printer.status)})."}
         printer_id, name = printer.id, printer.name
 
@@ -564,8 +570,8 @@ async def reiniciar_firmware(impresora: str) -> dict[str, Any]:
         printer, err = await resolve_one_printer(session, impresora)
         if err:
             return err
-        if printer.status == "printing":
-            return {"error": f"{printer.name} está imprimiendo; reiniciar el firmware abortaría la impresión."}
+        if moonraker_manager.has_active_print(printer.id, printer.status):
+            return {"error": f"{printer.name} está imprimiendo (o en pausa); reiniciar el firmware abortaría la impresión."}
         printer_id, name = printer.id, printer.name
 
     client = moonraker_manager.get_client(printer_id)

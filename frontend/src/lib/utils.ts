@@ -54,6 +54,21 @@ export function formatDateTime(iso: string | null): string {
 /**
  * Get status display info
  */
+/**
+ * True when the printer has a print in progress: running, or paused by Klipper
+ * (PAUSE / runout / M600). The backend reports a Klipper pause as status
+ * "paused" with the bed not cleared and a filename loaded; a manual "En pausa"
+ * hold on an idle printer keeps the bed cleared.
+ */
+export function hasActivePrint(p: {
+  status: string;
+  bed_cleared?: boolean;
+  current_filename?: string | null;
+}): boolean {
+  if (p.status === "printing") return true;
+  return p.status === "paused" && p.bed_cleared === false && !!p.current_filename;
+}
+
 export function getStatusInfo(status: string): {
   label: string;
   dotClass: string;

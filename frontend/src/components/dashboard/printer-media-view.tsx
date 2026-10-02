@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { Video, Image as ImageIcon } from "lucide-react";
 import { apiUrl } from "@/lib/api";
 import type { PrinterState } from "@/lib/types";
+import { hasActivePrint } from "@/lib/utils";
 
 /**
  * Shows the printer's live camera and/or the embedded G-code preview, with a
@@ -20,7 +21,7 @@ export function PrinterMediaView({
   const hasCamera = !!printer.camera_url;
   // The manager can only build a preview for an active local print.
   const canPreview =
-    printer.status === "printing" || printer.disconnected_while_printing;
+    hasActivePrint(printer) || printer.disconnected_while_printing;
 
   const [view, setView] = useState<"camera" | "preview">(
     hasCamera ? "camera" : "preview"

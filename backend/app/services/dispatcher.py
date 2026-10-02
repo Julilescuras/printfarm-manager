@@ -543,7 +543,10 @@ class Dispatcher:
                 job_file = os.path.basename(job.gcode_filename or "")
                 printer_file = os.path.basename(printer.current_filename or "")
                 is_live = (
-                    printer.status == "printing"
+                    (
+                        printer.status == "printing"
+                        or moonraker_manager.has_active_print(printer.id, printer.status)
+                    )
                     and printer_file
                     and printer_file == job_file
                 )

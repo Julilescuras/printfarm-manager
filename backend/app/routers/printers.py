@@ -253,7 +253,7 @@ async def cancel_print(printer_id: int, db: AsyncSession = Depends(get_db)):
     if not printer:
         raise HTTPException(status_code=404, detail="Printer not found")
 
-    if printer.status != "printing":
+    if not moonraker_manager.has_active_print(printer_id, printer.status):
         raise HTTPException(
             status_code=400,
             detail=f"La impresora no está imprimiendo (estado: {printer.status})",
@@ -329,7 +329,9 @@ async def set_printer_status(
     if not printer:
         raise HTTPException(status_code=404, detail="Printer not found")
 
-    if printer.status == "printing":
+    if moonraker_manager.has_active_print(printer_id, printer.status):
+        # Includes a Klipper-paused print: setting 'available' would mark a bed
+        # with a half-finished part as cleared.
         raise HTTPException(
             status_code=400,
             detail="Cannot change status while printing"
