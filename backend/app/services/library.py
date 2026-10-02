@@ -255,17 +255,26 @@ async def create_entry(
     return entry
 
 
+_NOT_NULL_FIELDS = {
+    "product_key", "product_name", "size", "printer_model", "nozzle",
+    "material", "units_per_plate",
+}
+
+
 async def update_entry(db: AsyncSession, entry: GcodeLibrary, data: dict) -> GcodeLibrary:
     new_status = data.pop("status", None)
-    notes = data.pop("notes", None) if "notes" in data else None
+    notes_sent = "notes" in data
+    notes = data.pop("notes", None) if notes_sent else None
     for key, value in data.items():
+        if value is None and key in _NOT_NULL_FIELDS:
+            continue  # explicit null on a NOT NULL column: ignore
         if key == "material" and value:
             value = value.strip().upper()
         setattr(entry, key, value)
     if new_status is not None:
         set_status(db, entry, new_status, reason="manual", notes=notes)
-    elif notes is not None:
-        entry.notes = notes
+    elif notes_sent:
+        entry.notes = notes  # explicit null clears the note
     await db.commit()
     await db.refresh(entry)
     return entry
@@ -420,6 +429,54 @@ async def mark_review(
             updated.append(entry.id)
     await db.commit()
     return updated
+
+
+async def last_print_info(db: AsyncSession, printer_id: int) -> dict:
+    """What ``record_bed_cleared`` would judge on the next clear-bed.
+
+    A job still ``printing`` on the printer (lost 'complete' event) is closed by
+    clear-bed BEFORE the verdict, so it becomes the judged row. Otherwise the
+    printer's most recent history row (only judgeable while outcome is None).
+    """
+    job = (
+        await db.execute(
+            select(PrintJob).where(
+                PrintJob.assigned_printer_id == printer_id,
+                PrintJob.status == "printing",
+            ).limit(1)
+        )
+    ).scalar_one_or_none()
+    if job:
+        return {
+            "history_id": None,
+            "is_test": bool(job.is_test),
+            "outcome": None,
+            "library_id": job.library_id,
+            "job_name": job.name,
+            "order_ref": job.order_ref,
+            "needs_verdict": bool(job.is_test),
+        }
+    history = (
+        await db.execute(
+            select(PrintHistory)
+            .where(PrintHistory.printer_id == printer_id)
+            .order_by(PrintHistory.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if not history:
+        return {"history_id": None, "is_test": False, "outcome": None,
+                "library_id": None, "job_name": None, "order_ref": None,
+                "needs_verdict": False}
+    return {
+        "history_id": history.id,
+        "is_test": bool(history.is_test),
+        "outcome": history.outcome,
+        "library_id": history.library_id,
+        "job_name": history.job_name,
+        "order_ref": history.order_ref,
+        "needs_verdict": bool(history.is_test and history.outcome is None),
+    }
 
 
 async def record_bed_cleared(

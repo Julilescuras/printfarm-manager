@@ -251,3 +251,13 @@ export interface InitialState {
   printers: PrinterState[];
   active_alerts: MaintenanceRecord[];
 }
+
+export interface LastPrintInfo {
+  history_id: number | null;
+  is_test: boolean;
+  outcome: BedOutcome | null;
+  library_id: number | null;
+  job_name: string | null;
+  order_ref: string | null;
+  needs_verdict: boolean;
+}

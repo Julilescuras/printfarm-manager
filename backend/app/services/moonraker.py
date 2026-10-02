@@ -338,6 +338,18 @@ class MoonrakerClient:
                 if new_state in ("complete", "cancelled", "error"):
                     db_status, bed_cleared, last_key = await self._get_db_print_state()
                     already_handled = last_key == event_key
+                    if (
+                        last_key is None
+                        and bed_cleared
+                        and db_status in ("available", "standby")
+                    ):
+                        # First start after the last_notified_print column was
+                        # added: an idle printer whose bed a human already
+                        # cleared and whose Klipper still reports the old
+                        # terminal state. Treat as handled and record the key
+                        # (no notification, no state change).
+                        already_handled = True
+                        updates["last_notified_print"] = event_key
 
                 if new_state == "printing":
                     updates["status"] = "printing"

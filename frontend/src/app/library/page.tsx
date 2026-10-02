@@ -452,13 +452,15 @@ function UploadDialog({
     if (!productKey.trim() || !productName.trim() || !size.trim() || !model) {
       return setError("Completá producto, nombre, talle e impresora.");
     }
+    const nozzleNum = parseFloat(nozzle.trim().replace(",", "."));
+    if (!isFinite(nozzleNum) || nozzleNum <= 0) return setError("Boquilla inválida.");
     const fd = new FormData();
     fd.append("gcode", file);
     fd.append("product_key", productKey.trim());
     fd.append("product_name", productName.trim());
     fd.append("size", size.trim());
     fd.append("printer_model", model);
-    fd.append("nozzle", nozzle);
+    fd.append("nozzle", String(nozzleNum));
     fd.append("material", material.trim() || "PLA");
     fd.append("units_per_plate", String(units));
     if (notes.trim()) fd.append("notes", notes.trim());
@@ -493,7 +495,7 @@ function UploadDialog({
 
         <label className={label}>
           Archivo G-code
-          <input ref={fileRef} type="file" accept=".gcode,.gco,.g,.bgcode" className={input} />
+          <input ref={fileRef} type="file" accept=".gcode,.gco,.g" className={input} />
         </label>
 
         <div className="grid grid-cols-2 gap-3">

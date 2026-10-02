@@ -369,6 +369,7 @@ class Dispatcher:
         # Bed now has (or is about to have) a part on it. Stays False until a
         # human clears the bed — this is what blocks an automatic reprint.
         printer.bed_cleared = False
+        printer.last_notified_print = None
         printer.disconnected_while_printing = False
         printer.current_filename = gcode_name
         printer.current_job_progress = 0.0

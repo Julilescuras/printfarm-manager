@@ -3,7 +3,7 @@
  */
 
 import type {
-  BrowseResult, FileNode, PrintHistoryEntry, LibraryEntry, LibraryStatus,
+  BrowseResult, FileNode, PrintHistoryEntry, LastPrintInfo, LibraryEntry, LibraryStatus,
   PrintJob, BedOutcome, ClearBedResult,
 } from "./types";
 
@@ -141,6 +141,8 @@ export const api = {
   // Queue
   getQueue: (status?: string) =>
     apiFetch<any[]>(`/api/queue${status ? `?status=${encodeURIComponent(status)}` : ""}`),
+  getLastPrint: (printerId: number) =>
+    apiFetch<LastPrintInfo>(`/api/printers/${printerId}/last-print`),
   getHistory: (limit: number = 100) =>
     apiFetch<PrintHistoryEntry[]>(`/api/queue/history?limit=${limit}`),
   addJob: (formData: FormData) =>

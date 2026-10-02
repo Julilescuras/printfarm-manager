@@ -16,6 +16,8 @@ from app.database import Base
 
 class IntegrationEvent(Base):
     __tablename__ = "integration_events"
+    # Never reuse ids after the 30-day prune (Control Ventas pulls by ``after=<id>``).
+    __table_args__ = {"sqlite_autoincrement": True}
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     at: Mapped[datetime] = mapped_column(

@@ -3,12 +3,12 @@
 import { useEffect, useState } from "react";
 import { Loader2, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
-import type { BedOutcome, PrintHistoryEntry } from "@/lib/types";
+import type { BedOutcome, LastPrintInfo } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
  * Diálogo único para vaciar la cama. Lo usan el dashboard y el detalle de impresora.
- * Mira la última fila de historial de la impresora sin veredicto: si era una prueba
+ * Consulta GET /printers/{id}/last-print (la misma fila que juzgará el backend): si era una prueba
  * (is_test) pregunta "¿Salió bien?"; si no, vacía normal con opción discreta "Salió mal".
  */
 export function ClearBedDialog({
@@ -22,7 +22,7 @@ export function ClearBedDialog({
   onClose: () => void;
   onDone?: () => void;
 }) {
-  const [last, setLast] = useState<PrintHistoryEntry | null>(null);
+  const [last, setLast] = useState<LastPrintInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [choice, setChoice] = useState<BedOutcome | null>(null);
   const [note, setNote] = useState("");
@@ -32,13 +32,9 @@ export function ClearBedDialog({
   useEffect(() => {
     let alive = true;
     api
-      .getHistory(50)
-      .then((rows) => {
-        if (!alive) return;
-        const mine = rows
-          .filter((r) => r.printer_id === printerId && !r.outcome)
-          .sort((a, b) => b.id - a.id);
-        setLast(mine[0] ?? null);
+      .getLastPrint(printerId)
+      .then((info) => {
+        if (alive) setLast(info);
       })
       .catch(() => {})
       .finally(() => alive && setLoading(false));
@@ -53,7 +49,7 @@ export function ClearBedDialog({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, busy]);
 
-  const isTest = !!last?.is_test;
+  const isTest = !!last?.needs_verdict;
 
   const submit = async (outcome?: BedOutcome) => {
     setBusy(true);

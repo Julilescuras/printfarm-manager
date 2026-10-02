@@ -17,7 +17,7 @@ from app.models.print_job import PrintJob
 from app.models.maintenance import MaintenanceRecord
 from app.schemas.printer import PrinterCreate, PrinterUpdate, PrinterResponse, PrinterAssignSpool, PrinterSetStatus
 from app.schemas.library import ClearBedRequest
-from app.services.library import record_bed_cleared
+from app.services.library import last_print_info, record_bed_cleared
 from app.services.moonraker import moonraker_manager
 from app.services.dispatcher import dispatcher
 from app.services.gcode_thumbnail import extract_gcode_thumbnail
@@ -194,6 +194,18 @@ async def get_printer_thumbnail(printer_id: int, db: AsyncSession = Depends(get_
         media_type=media_type,
         headers={"Cache-Control": "public, max-age=3600"},
     )
+
+
+@router.get("/{printer_id}/last-print")
+async def get_last_print(printer_id: int, db: AsyncSession = Depends(get_db)):
+    """The print the next clear-bed verdict would apply to (see
+    ``library.last_print_info``)."""
+    exists = (
+        await db.execute(select(Printer.id).where(Printer.id == printer_id))
+    ).scalar_one_or_none()
+    if exists is None:
+        raise HTTPException(status_code=404, detail="Printer not found")
+    return await last_print_info(db, printer_id)
 
 
 @router.post("/{printer_id}/clear-bed")
