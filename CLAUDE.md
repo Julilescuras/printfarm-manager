@@ -7,7 +7,7 @@ Orquestador de granja de impresión 3D. Monorepo con:
 - **Infra:** Docker Compose, GitHub Actions → GHCR, servidor AntiX Linux
 
 ## Servidor de producción
-- **IP local:** `192.168.0.169` (también accesible por Tailscale en `100.73.163.62`)
+- **IP local:** `192.168.20.25` (también accesible por Tailscale en `100.126.215.99`)
 - **Usuario SSH:** `ziegelimpresoras3D` 
 - **Directorio:** `/home/ziegelimpresoras3D/printfarm-manager`
 - **Acceso SSH programático:** usar `paramiko` (ya instalado en el proyecto), ver `scripts/update_server.py` como referencia
