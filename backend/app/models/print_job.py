@@ -3,7 +3,7 @@ PrintJob and PrintHistory ORM models — the centralized print queue and history
 """
 
 from datetime import datetime, timezone
-from sqlalchemy import String, Float, Integer, DateTime, Text, ForeignKey
+from sqlalchemy import String, Float, Integer, DateTime, Text, ForeignKey, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -52,6 +52,18 @@ class PrintJob(Base):
     )
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
+    # ── Integration with Control Ventas (PT-1b) ──
+    # G-code library entry this job was created from (None for manual uploads).
+    library_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Control Ventas order / line ids and a human label ("Pedido Andy").
+    order_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    line_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    order_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Test print of a draft library entry: its result (clear-bed outcome)
+    # approves or rejects the entry. Always a single, ungrouped job.
+    is_test: Mapped[bool] = mapped_column(Boolean, default=False)
+    source: Mapped[str] = mapped_column(String(20), default="manual", comment="manual | cv")
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc)
@@ -81,6 +93,12 @@ class PrintJob(Base):
             "status": self.status,
             "assigned_printer_id": self.assigned_printer_id,
             "started_at": self.started_at.isoformat() if self.started_at else None,
+            "library_id": self.library_id,
+            "order_id": self.order_id,
+            "line_id": self.line_id,
+            "order_ref": self.order_ref,
+            "is_test": bool(self.is_test),
+            "source": self.source,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
@@ -118,6 +136,15 @@ class PrintHistory(Base):
         String(50), default="success",
         comment="success | failed | cancelled"
     )
+    # ── Integration snapshot (PT-1b) ──
+    library_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    order_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    line_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    order_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_test: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Human verdict recorded when the bed is cleared: ok | bad (None = not given)
+    outcome: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    outcome_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     def to_dict(self) -> dict:
         return {
@@ -139,4 +166,11 @@ class PrintHistory(Base):
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "duration_secs": self.duration_secs,
             "result": self.result,
+            "library_id": self.library_id,
+            "order_id": self.order_id,
+            "line_id": self.line_id,
+            "order_ref": self.order_ref,
+            "is_test": bool(self.is_test),
+            "outcome": self.outcome,
+            "outcome_note": self.outcome_note,
         }

@@ -45,6 +45,12 @@ class PrintJobResponse(BaseModel):
     status: str
     assigned_printer_id: Optional[int]
     started_at: Optional[datetime]
+    library_id: Optional[int] = None
+    order_id: Optional[str] = None
+    line_id: Optional[str] = None
+    order_ref: Optional[str] = None
+    is_test: bool = False
+    source: str = "manual"
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
 
@@ -70,5 +76,12 @@ class PrintHistoryResponse(BaseModel):
     completed_at: Optional[datetime]
     duration_secs: Optional[int]
     result: str
+    library_id: Optional[int] = None
+    order_id: Optional[str] = None
+    line_id: Optional[str] = None
+    order_ref: Optional[str] = None
+    is_test: bool = False
+    outcome: Optional[str] = None
+    outcome_note: Optional[str] = None
 
     model_config = {"from_attributes": True}

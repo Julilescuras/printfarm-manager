@@ -47,6 +47,7 @@ async def init_db():
         
         # Import all models so they are registered with Base
         from app.models import printer, print_job, maintenance, settings, custom_tool  # noqa: F401
+        from app.models import gcode_library, integration_event  # noqa: F401
         await conn.run_sync(Base.metadata.create_all)
 
         # --- Migrations: add new columns to existing tables ---
@@ -76,6 +77,20 @@ async def init_db():
             ("printers", "filament_tracking_mode", "VARCHAR(20) NOT NULL DEFAULT 'manager'"),
             ("printers", "bed_cleared", "INTEGER NOT NULL DEFAULT 1"),
             ("printers", "last_notified_print", "TEXT"),
+            # PT-1b: integration with Control Ventas (library + orders)
+            ("print_jobs", "library_id", "INTEGER"),
+            ("print_jobs", "order_id", "TEXT"),
+            ("print_jobs", "line_id", "TEXT"),
+            ("print_jobs", "order_ref", "TEXT"),
+            ("print_jobs", "is_test", "INTEGER NOT NULL DEFAULT 0"),
+            ("print_jobs", "source", "VARCHAR(20) NOT NULL DEFAULT 'manual'"),
+            ("print_history", "library_id", "INTEGER"),
+            ("print_history", "order_id", "TEXT"),
+            ("print_history", "line_id", "TEXT"),
+            ("print_history", "order_ref", "TEXT"),
+            ("print_history", "is_test", "INTEGER NOT NULL DEFAULT 0"),
+            ("print_history", "outcome", "VARCHAR(10)"),
+            ("print_history", "outcome_note", "TEXT"),
             ("maintenance_records", "custom_label", "VARCHAR(100)"),
             ("maintenance_records", "custom_icon", "VARCHAR(20)"),
             ("maintenance_records", "custom_description", "VARCHAR(300)"),
