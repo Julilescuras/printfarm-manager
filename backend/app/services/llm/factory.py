@@ -26,14 +26,14 @@ PROVIDER_DEFAULTS: dict[str, dict] = {
     "gemini": {
         "kind": "openai",
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-        "model": "gemini-2.0-flash",
+        "model": "gemini-2.5-flash",
         "label": "Google Gemini (gratis)",
     },
     "groq": {
         "kind": "openai",
         "base_url": "https://api.groq.com/openai/v1",
-        "model": "llama-3.3-70b-versatile",
-        "label": "Groq / Llama (gratis)",
+        "model": "openai/gpt-oss-120b",
+        "label": "Groq (gratis)",
     },
     "openai": {
         "kind": "openai",
