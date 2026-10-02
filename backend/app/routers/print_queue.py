@@ -231,21 +231,45 @@ async def add_job(
     return created_jobs
 
 
+# Job states after which the G-code is no longer needed by the queue.
+TERMINAL_JOB_STATUSES = ("completed", "cancelled", "failed")
+# Top-level folder (inside gcodes_path) reserved for the approved G-code
+# library (PT-1b). Never purged: those are curated assets, not leftovers.
+_LIBRARY_DIR = "library"
+
+
+def _norm(p: str) -> str:
+    return os.path.normcase(os.path.realpath(p))
+
+
 @router.post("/gcodes/purge")
 async def purge_gcodes(db: AsyncSession = Depends(get_db)):
     """DANGER: Delete stored G-code files from the server to free disk space.
 
-    Files referenced by an ACTIVE job (pending or printing) are kept, so the
-    queue is never broken. Everything else (history, completed, cancelled) is
-    removed. Triggered from the 'Zona peligrosa' in Configuración.
+    Kept: every file referenced by a NON-terminal job (pending, paused,
+    printing, …) and every file referenced by the G-code library, plus the
+    whole ``library/`` folder. Everything else (history, completed, cancelled)
+    is removed. Triggered from the 'Zona peligrosa' in Configuración.
     """
+    from sqlalchemy import text
+
     # Paths we must keep: G-codes still needed by the live queue.
     result = await db.execute(
         select(PrintJob.gcode_filename).where(
-            PrintJob.status.in_(["pending", "printing"])
+            PrintJob.status.not_in(TERMINAL_JOB_STATUSES)
         )
     )
-    keep = {os.path.abspath(p) for (p,) in result.all() if p}
+    keep = {_norm(p) for (p,) in result.all() if p}
+
+    # …and anything referenced by the G-code library (table added in PT-1b;
+    # tolerate it not existing yet).
+    try:
+        lib = await db.execute(text("SELECT gcode_path FROM gcode_library"))
+        keep |= {_norm(p) for (p,) in lib.all() if p}
+    except Exception:
+        await db.rollback()
+
+    library_root = _norm(os.path.join(settings.gcodes_path, _LIBRARY_DIR))
 
     deleted = 0
     freed_bytes = 0
@@ -253,10 +277,15 @@ async def purge_gcodes(db: AsyncSession = Depends(get_db)):
     def _purge() -> tuple[int, int]:
         d = 0
         f = 0
-        for root, _dirs, files in os.walk(settings.gcodes_path):
+        for root, dirs, files in os.walk(settings.gcodes_path):
+            # Never descend into the library folder.
+            dirs[:] = [
+                sub for sub in dirs
+                if _norm(os.path.join(root, sub)) != library_root
+            ]
             for fn in files:
-                full = os.path.abspath(os.path.join(root, fn))
-                if full in keep:
+                full = os.path.join(root, fn)
+                if _norm(full) in keep:
                     continue
                 try:
                     f += os.path.getsize(full)
@@ -456,11 +485,29 @@ async def resume_job(job_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.post("/{job_id}/requeue", response_model=PrintJobResponse)
 async def requeue_job(job_id: int, db: AsyncSession = Depends(get_db)):
-    """Re-enqueue a completed or cancelled job."""
+    """Re-enqueue a finished job (completed, cancelled or failed).
+
+    Any other state is a 409: re-queuing a pending/paused job is meaningless and
+    re-queuing a PRINTING one would detach it from the printer mid-print (the
+    dispatcher could then send it to a second printer).
+    """
     result = await db.execute(select(PrintJob).where(PrintJob.id == job_id))
     job = result.scalar_one_or_none()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    if job.status not in TERMINAL_JOB_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Solo se pueden volver a encolar trabajos terminados "
+                f"(completado, cancelado o fallido). Estado actual: {job.status}."
+            ),
+        )
+    if not job.gcode_filename or not os.path.exists(job.gcode_filename):
+        raise HTTPException(
+            status_code=404,
+            detail=f"El G-code ya no existe en disco: {job.gcode_original_name}",
+        )
 
     job.status = "pending"
     job.copies_completed = 0
