@@ -51,6 +51,13 @@ class Printer(Base):
     # guarantee that a finished print is never overprinted without a human
     # clearing the bed, independent of how the volatile `status` string evolves.
     bed_cleared: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Last terminal Klipper event already handled for this printer, as
+    # "<state>|<print_stats.filename>" (state = complete | cancelled | error).
+    # Klipper keeps reporting that state until the next print, so after a
+    # backend restart / reconnect this prevents re-notifying Telegram, closing
+    # the job twice or reverting a bed the human already cleared. Reset to NULL
+    # when a new print starts.
+    last_notified_print: Mapped[str | None] = mapped_column(Text, nullable=True)
     current_job_progress: Mapped[float] = mapped_column(Float, default=0.0)
     hotend_temp: Mapped[float] = mapped_column(Float, default=0.0)
     hotend_target: Mapped[float] = mapped_column(Float, default=0.0)

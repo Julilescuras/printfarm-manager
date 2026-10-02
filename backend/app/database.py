@@ -75,6 +75,7 @@ async def init_db():
             ("printers", "maint_credited_secs", "INTEGER NOT NULL DEFAULT 0"),
             ("printers", "filament_tracking_mode", "VARCHAR(20) NOT NULL DEFAULT 'manager'"),
             ("printers", "bed_cleared", "INTEGER NOT NULL DEFAULT 1"),
+            ("printers", "last_notified_print", "TEXT"),
             ("maintenance_records", "custom_label", "VARCHAR(100)"),
             ("maintenance_records", "custom_icon", "VARCHAR(20)"),
             ("maintenance_records", "custom_description", "VARCHAR(300)"),

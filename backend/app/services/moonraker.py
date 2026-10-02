@@ -45,7 +45,10 @@ class MoonrakerClient:
         self._task: Optional[asyncio.Task] = None
         self._request_id = 0
         self._last_state: Optional[str] = None
-        
+        # Last print_stats.filename reported by Klipper (e.g.
+        # "3Dprint-manager/foo.gcode"). Used to key "already handled" events.
+        self._klipper_filename: Optional[str] = None
+
         # Filament tracking
         self._last_filament_used: float = 0.0
         self._filament_used_accumulated: float = 0.0
@@ -67,6 +70,12 @@ class MoonrakerClient:
     @property
     def is_connected(self) -> bool:
         return self._connected
+
+    @property
+    def klipper_state(self) -> Optional[str]:
+        """Last raw Klipper print_stats.state seen (printing, paused, complete,
+        cancelled, standby, error) or None if nothing was received yet."""
+        return self._last_state
 
     def get_current_print_filament_grams(self, material: Optional[str] = None) -> Optional[float]:
         """Weight (g) of filament extruded in the current/just-finished print.
@@ -299,6 +308,7 @@ class MoonrakerClient:
 
             if "filename" in ps:
                 updates["current_filename"] = ps["filename"]
+                self._klipper_filename = ps["filename"] or None
 
             if "print_duration" in ps:
                 # Klipper expone total_duration (incluye tiempo pausado) y
@@ -312,6 +322,23 @@ class MoonrakerClient:
                 new_state = ps["state"]
                 old_state = self._last_state
 
+                # Terminal Klipper states (complete / cancelled / error) persist
+                # in print_stats until the next print starts, so after a backend
+                # restart or a WebSocket reconnect we receive them AGAIN. To not
+                # re-notify Telegram, re-close the job or flip a bed the human
+                # already cleared back to requires_clearance, we persist the
+                # last handled "<state>|<filename>" per printer
+                # (printers.last_notified_print) and treat a match as handled.
+                # Limitation: the same file printed outside the manager while
+                # the backend was down shares the key; acceptable (the
+                # dispatcher never starts a print while the backend is down).
+                event_key = f"{new_state}|{self._klipper_filename or ''}"
+                already_handled = False
+                db_status, bed_cleared, last_key = None, True, None
+                if new_state in ("complete", "cancelled", "error"):
+                    db_status, bed_cleared, last_key = await self._get_db_print_state()
+                    already_handled = last_key == event_key
+
                 if new_state == "printing":
                     updates["status"] = "printing"
                     # A print is running → the bed is in use. Mark it not-cleared
@@ -319,6 +346,8 @@ class MoonrakerClient:
                     # it. Covers prints started from Fluidd/Mainsail too, not just
                     # our dispatcher.
                     updates["bed_cleared"] = False
+                    # New/ongoing print → forget the last handled terminal event.
+                    updates["last_notified_print"] = None
                     if self._last_state not in ("printing", "paused"):
                         # New print started — reset ETA trackers
                         self._last_print_duration = 0.0
@@ -326,16 +355,25 @@ class MoonrakerClient:
                         # Reset per-print filament total for the new print.
                         self._current_print_filament_mm = 0.0
                 elif new_state == "paused":
-                    updates["status"] = "printing"  # Still show as printing
+                    # Klipper pause (PAUSE / filament runout / M600). Shown as
+                    # 'paused' (it used to be reported as 'printing'). The bed
+                    # is still in use.
+                    updates["status"] = "paused"
+                    updates["bed_cleared"] = False
                 elif new_state == "complete":
                     # Flush any remaining filament
                     if self._filament_used_accumulated > 0:
                         asyncio.create_task(self._sync_filament_to_spoolman())
-                        
-                    # CRITICAL BUSINESS RULE: Print done -> requires clearance
-                    updates["status"] = "requires_clearance"
-                    updates["current_job_progress"] = 1.0
-                    if old_state != "complete":
+
+                    if already_handled:
+                        # Seen (and notified) before: never notify / close the
+                        # job again, and keep a bed the human already cleared.
+                        self._apply_handled_terminal(updates, db_status, bed_cleared)
+                    else:
+                        # CRITICAL BUSINESS RULE: Print done -> requires clearance
+                        updates["status"] = "requires_clearance"
+                        updates["current_job_progress"] = 1.0
+                        updates["last_notified_print"] = event_key
                         logger.info(
                             f"[Printer {self.printer_id}] Print COMPLETE -> requires_clearance"
                         )
@@ -366,33 +404,46 @@ class MoonrakerClient:
                     if self._filament_used_accumulated > 0:
                         asyncio.create_task(self._sync_filament_to_spoolman())
 
-                    # Don't override a manual state the user may have set
-                    current_db_status = await self._get_current_db_status()
-                    if current_db_status not in ("paused", "available"):
-                        updates["status"] = "requires_clearance"
-                    if old_state not in ("cancelled", "standby"):
-                        logger.info(
-                            f"[Printer {self.printer_id}] Print CANCELLED -> requires_clearance"
-                        )
-                        from app.services.dispatcher import dispatcher
-                        asyncio.create_task(
-                            dispatcher.on_print_aborted(self.printer_id, "cancelled")
-                        )
+                    if already_handled:
+                        self._apply_handled_terminal(updates, db_status, bed_cleared)
+                    else:
+                        updates["last_notified_print"] = event_key
+                        if old_state in ("printing", "paused") or not bed_cleared:
+                            # We saw it running (a DB 'paused' here is the Klipper
+                            # pause, not a manual hold) or the bed was never
+                            # cleared → there is a part on the bed.
+                            updates["status"] = "requires_clearance"
+                        elif db_status not in ("paused", "available"):
+                            # Don't override a manual state the user may have set
+                            updates["status"] = "requires_clearance"
+                        if old_state not in ("cancelled", "standby"):
+                            logger.info(
+                                f"[Printer {self.printer_id}] Print CANCELLED -> requires_clearance"
+                            )
+                            from app.services.dispatcher import dispatcher
+                            asyncio.create_task(
+                                dispatcher.on_print_aborted(self.printer_id, "cancelled")
+                            )
                 elif new_state == "standby":
                     # Only set standby if we weren't in a manual/clearance state
                     if old_state != "complete":
                         current_db_status, bed_cleared = await self._get_current_db_state()
-                        if current_db_status in ("paused", "available", "requires_clearance"):
+                        klipper_paused = old_state == "paused"
+                        if (
+                            current_db_status in ("paused", "available", "requires_clearance")
+                            and not klipper_paused
+                        ):
                             pass  # preserve manual / clearance states
-                        elif current_db_status == "printing" or not bed_cleared:
-                            # Either we thought it was printing but Klipper now
-                            # reports standby WITHOUT us ever seeing 'complete'
-                            # (lost event — backend restarted mid-print, or the WS
-                            # dropped at completion), OR the bed was never cleared
-                            # after a prior print/error. Klipper idle + a part on
-                            # the bed → requires clearance, NEVER idle. This is the
-                            # exact case that used to let the next job print on top,
-                            # and it keeps the invariant that standby ⟺ bed is clear.
+                        elif current_db_status in ("printing", "paused") or not bed_cleared:
+                            # Either we thought it was printing (or Klipper-paused)
+                            # but Klipper now reports standby WITHOUT us ever
+                            # seeing 'complete' (lost event — backend restarted
+                            # mid-print, or the WS dropped at completion), OR the
+                            # bed was never cleared after a prior print/error.
+                            # Klipper idle + a part on the bed → requires
+                            # clearance, NEVER idle. This is the exact case that
+                            # used to let the next job print on top, and it keeps
+                            # the invariant that standby ⟺ bed is clear.
                             updates["status"] = "requires_clearance"
                         else:
                             updates["status"] = "standby"
@@ -402,7 +453,8 @@ class MoonrakerClient:
                         asyncio.create_task(self._sync_filament_to_spoolman())
 
                     updates["status"] = "error"
-                    if old_state != "error":
+                    if old_state != "error" and not already_handled:
+                        updates["last_notified_print"] = event_key
                         asyncio.create_task(
                             self._notify_printer_error()
                         )
@@ -424,10 +476,15 @@ class MoonrakerClient:
             updates["eta_seconds"] = None
 
         if updates:
-            # Never override 'paused' status from Moonraker state changes
+            # Never override a MANUAL 'paused' hold with 'standby' (a Klipper
+            # pause that ended is handled by the state machine above).
             if "status" in updates:
                 current_db_status = await self._get_current_db_status()
-                if current_db_status == "paused" and updates["status"] in ("standby",):
+                if (
+                    current_db_status == "paused"
+                    and updates["status"] in ("standby",)
+                    and self._last_state != "paused"
+                ):
                     del updates["status"]
 
             # Any live state report means the printer is back — clear a stale
@@ -558,6 +615,34 @@ class MoonrakerClient:
             if printer:
                 return printer.status, printer.bed_cleared
             return "offline", True
+
+    async def _get_db_print_state(self) -> tuple[str, bool, Optional[str]]:
+        """(status, bed_cleared, last_notified_print) from the database."""
+        async with async_session() as session:
+            result = await session.execute(
+                select(Printer).where(Printer.id == self.printer_id)
+            )
+            printer = result.scalar_one_or_none()
+            if printer:
+                return printer.status, printer.bed_cleared, printer.last_notified_print
+            return "offline", True, None
+
+    @staticmethod
+    def _apply_handled_terminal(updates: dict, db_status: Optional[str], bed_cleared: bool):
+        """Status updates for a terminal Klipper state we already handled.
+
+        Never notifies or closes jobs again. If a human already cleared the bed
+        (bed_cleared=True) the current status is kept and the stale filename /
+        progress Klipper re-reports are dropped so the card stays clean.
+        Otherwise the part is still on the bed → (re)assert requires_clearance
+        unless the user set a manual 'paused' hold.
+        """
+        if bed_cleared:
+            updates.pop("current_filename", None)
+            updates.pop("current_job_progress", None)
+            return
+        if db_status not in ("paused", "requires_clearance"):
+            updates["status"] = "requires_clearance"
 
     async def _set_online_status(self):
         """Set the printer online, but respect states that must survive reconnects.
@@ -831,6 +916,17 @@ class MoonrakerManager:
     def get_client(self, printer_id: int) -> Optional[MoonrakerClient]:
         """Get a MoonrakerClient by printer ID."""
         return self.clients.get(printer_id)
+
+    def has_active_print(self, printer_id: int, db_status: Optional[str] = None) -> bool:
+        """True if the printer has a print in progress, running OR paused.
+
+        A DB status of 'paused' is ambiguous (Klipper pause vs. a manual hold
+        on an idle printer), so the live Klipper state decides.
+        """
+        if db_status == "printing":
+            return True
+        client = self.clients.get(printer_id)
+        return bool(client and client.klipper_state in ("printing", "paused"))
 
     async def connect_all(self, printers: list):
         """Connect to all configured printers."""
