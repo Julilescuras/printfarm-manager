@@ -12,7 +12,7 @@ Orquestador de granja de impresión 3D. Monorepo con:
 - **Directorio:** `/home/ziegelimpresoras3D/printfarm-manager`
 - **Acceso SSH programático:** usar `paramiko` (ya instalado en el proyecto), ver `scripts/update_server.py` como referencia
 
-## Versión actual: 2.9.1
+## Versión actual: 3.0.0
 
 ### Dónde vive la versión — tocar SOLO este archivo al hacer bump:
 1. `backend/app/version.py` → `APP_VERSION = "X.Y.Z"` ← fuente de verdad única
@@ -75,6 +75,29 @@ frontend/src/
   providers/
     websocket-provider.tsx  ← estado global via WebSocket
 ```
+
+## Integración con Control Ventas (3.0.0)
+- **Token:** `app_settings.integration_token` (generado al primer arranque, regenerable en /settings).
+  Todo `/api/integration/*` exige `Authorization: Bearer <token>` (`security.require_integration_token`).
+  La UI LAN (`/api/library`, etc.) sigue sin login.
+- **Biblioteca** (`models/gcode_library.py`, `services/library.py`, `routers/library.py`):
+  estados `draft → testing → approved|rejected`, `review` (STL cambió). Archivos en
+  `gcodes_path/library/<slug>-<sha1>/` (`services/gcode_storage.py`; el purge no entra).
+  Encolar draft/testing = 1 job `is_test` (copies=1); approved = N jobs (una placa cada uno).
+  `DELETE` no borra el archivo si un job no terminal lo usa.
+- **Jobs/historial:** columnas `library_id, order_id, line_id, order_ref, is_test, source`
+  (+ `outcome, outcome_note` en historial). `clear-bed` con `{outcome, note}` resuelve la prueba
+  (`services/library.record_bed_cleared`).
+- **Eventos** (`integration_events`, `services/integration_events.emit` en la MISMA sesión del
+  cambio; retención 30 días): `job.created`, `job.started`, `job.completed` (`units`,
+  `units_completed`), `job.failed`, `job.cancelled`, `job.requeued`, `bed.cleared` (`outcome`),
+  `library.status_changed` (`old_status`, `status`, `reason`). Puntos de emisión: dispatcher
+  (`_dispatch_job`, `on_print_complete`, `on_print_aborted`, `reconcile_stale_jobs`), routers
+  print_queue/printers/library y la tool del bot que vacía camas.
+- **Endpoints integración:** `ping`, `printers`, `library` (GET/POST/PUT, `{id}`),
+  `library/mark-review`, `jobs` (POST desde `library_id`, GET `?order_id`), `events?after=&limit=`,
+  `assistant/parse-order` (factory LLM; 503 sin motor, 502 si el modelo falla).
+- **Telegram:** al completar un job con `order_id` agrega "Pedido X: n/m impresos" (placas).
 
 ## Convenciones importantes
 - **No usar Alembic** — migraciones inline en `database.py`

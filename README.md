@@ -72,6 +72,24 @@ Desde la pestaña **Configuración** en el menú lateral podés:
 - Subida de G-code: tamaño máximo configurable con `MAX_GCODE_MB` (default 200).
   Los nombres de archivo se sanitizan y todo queda confinado a `GCODES_PATH`.
 
+### Biblioteca de G-code y pedidos de Control Ventas (3.0)
+
+- **Biblioteca** (`/api/library`): G-code laminados por producto + talle + modelo de
+  impresora + boquilla, guardados en `GCODES_PATH/library/<producto>/` (el "vaciar
+  G-codes" de Configuración nunca toca esa carpeta). Cada entrada tiene estado:
+  `draft` → (encolar) → `testing` → `approved` / `rejected`; `review` cuando Control
+  Ventas detecta que el STL cambió.
+- **Prueba**: encolar una entrada en borrador crea **un solo** trabajo de prueba (🧪).
+  Al vaciar la cama se indica si salió bien (`outcome: ok|bad` + nota): bien →
+  aprobada, mal → rechazada con la nota.
+- **Pedidos**: Control Ventas crea trabajos desde una entrada aprobada con
+  `order_id`/`line_id`/`order_ref` (una tarea por placa). El aviso de Telegram al
+  terminar incluye "Pedido X: n/m impresos".
+- **Eventos**: Control Ventas consulta `GET /api/integration/events?after=<id>`
+  (cola de eventos de trabajos, vaciado de cama y biblioteca; se guardan 30 días).
+- **IA**: `POST /api/integration/assistant/parse-order` usa el motor del asistente
+  configurado en Ajustes para interpretar pedidos de texto (503 si no hay motor).
+
 ### Tema oscuro/claro
 
 Desde **Configuración > Apariencia** podés alternar entre modo oscuro y claro.
@@ -120,7 +138,7 @@ docker compose up -d --build
 | POST | `/api/printers` | Agregar impresora |
 | PUT | `/api/printers/{id}` | Editar impresora |
 | DELETE | `/api/printers/{id}` | Eliminar impresora |
-| POST | `/api/printers/{id}/clear-bed` | Vaciar cama |
+| POST | `/api/printers/{id}/clear-bed` | Vaciar cama (body opcional `{outcome: ok\|bad, note}`) |
 | POST | `/api/printers/{id}/cancel-print` | Cancelar la impresión en curso |
 | POST | `/api/printers/{id}/dispatch` | Forzar despacho del próximo trabajo |
 | PUT | `/api/printers/{id}/status` | Cambiar estado manual (available/paused/requires_clearance) |
@@ -132,6 +150,10 @@ docker compose up -d --build
 | DELETE | `/api/queue/{id}` | Cancelar trabajo pendiente |
 | POST | `/api/queue/{id}/clone` | Duplicar un trabajo a la cola |
 | POST | `/api/queue/{id}/requeue` | Re-encolar un trabajo completado/cancelado |
+| GET/POST | `/api/library` | Biblioteca de G-code: listar (filtros) / subir (multipart) |
+| GET/PUT/DELETE | `/api/library/{id}` | Ver / editar (estado, notas, metadatos) / borrar |
+| POST | `/api/library/{id}/enqueue` | Encolar (borrador → prueba; aprobada → N placas) |
+| * | `/api/integration/*` | API para Control Ventas (token Bearer): ping, printers, library, jobs, events, assistant/parse-order |
 | GET | `/api/maintenance` | Registros de mantenimiento |
 | POST | `/api/maintenance/{id}/reset` | Reset de contador |
 | GET | `/api/settings` | Configuración del sistema |
