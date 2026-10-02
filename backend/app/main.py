@@ -28,6 +28,7 @@ from app.routers import printers, print_queue, maintenance, spoolman
 from app.routers import settings_router
 from app.routers import assistant_tools_router
 from app.routers import files as files_router
+from app.routers import integration as integration_router
 from app.services.moonraker import moonraker_manager
 from app.services.monitor import monitor
 from app.services.reporter import weekly_reporter
@@ -120,6 +121,11 @@ async def lifespan(app: FastAPI):
     await init_db()
     logger.info("✅ Database initialized")
 
+    # 1b. Make sure the integration token exists (generated on first startup)
+    from app.security import get_integration_token
+    async with async_session() as session:
+        await get_integration_token(session)
+
     # 2. Seed printers from config
     await _seed_printers_from_config()
 
@@ -211,6 +217,7 @@ app.include_router(spoolman.router)
 app.include_router(settings_router.router)
 app.include_router(assistant_tools_router.router)
 app.include_router(files_router.router)
+app.include_router(integration_router.router)
 
 
 # WebSocket endpoint for frontend

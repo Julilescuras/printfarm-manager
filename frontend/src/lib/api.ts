@@ -260,6 +260,11 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ settings }),
     }),
+  regenerateIntegrationToken: () =>
+    apiFetch<{ status: string; integration_token: string }>(
+      "/api/settings/integration-token/regenerate",
+      { method: "POST" }
+    ),
   testTelegram: () =>
     apiFetch<any>("/api/settings/telegram/test", { method: "POST" }),
 

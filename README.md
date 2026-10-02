@@ -59,6 +59,19 @@ Desde la pestaña **Configuración** en el menú lateral podés:
 4. Pegar el token y chat ID en la configuración
 5. Probar con el botón "Enviar prueba"
 
+### Integración con Control Ventas y seguridad
+
+- La API de integración (`/api/integration/*`, usada por Control Ventas) exige
+  `Authorization: Bearer <token>`. El token se genera solo en el primer arranque
+  y se ve, copia y regenera desde **Configuración → Integración con Control Ventas**.
+  Al regenerarlo, el anterior deja de funcionar al instante.
+- La interfaz web y el resto de la API **no tienen login**: están pensadas para
+  la red local (LAN/Tailscale). Cualquiera con acceso a la red puede operar la
+  granja y ver el token. No expongas los puertos 3000/8000 a Internet. (Login de
+  usuarios: fuera de alcance por ahora.)
+- Subida de G-code: tamaño máximo configurable con `MAX_GCODE_MB` (default 200).
+  Los nombres de archivo se sanitizan y todo queda confinado a `GCODES_PATH`.
+
 ### Tema oscuro/claro
 
 Desde **Configuración > Apariencia** podés alternar entre modo oscuro y claro.

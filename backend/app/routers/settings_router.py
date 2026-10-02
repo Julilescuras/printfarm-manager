@@ -9,6 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.settings import AppSettings
+from app.security import (
+    INTEGRATION_TOKEN_KEY,
+    get_integration_token,
+    regenerate_integration_token,
+)
 from app.services.telegram import telegram_notifier
 from app.services.llm.base import ChatMessage, LLMProviderError
 from app.services.llm.factory import PROVIDER_DEFAULTS, get_provider
@@ -23,9 +28,15 @@ class SettingsUpdate(BaseModel):
 
 @router.get("")
 async def get_settings(db: AsyncSession = Depends(get_db)):
-    """Get all application settings."""
+    """Get all application settings.
+
+    Includes ``integration_token`` (the LAN UI has no login yet, so whoever can
+    open Configuración can see it — same trust level as the Telegram token).
+    """
     result = await db.execute(select(AppSettings))
     settings = {s.key: s.value for s in result.scalars().all()}
+    if not settings.get(INTEGRATION_TOKEN_KEY):
+        settings[INTEGRATION_TOKEN_KEY] = await get_integration_token(db)
     return settings
 
 
@@ -36,6 +47,10 @@ async def update_settings(
 ):
     """Update application settings."""
     for key, value in data.settings.items():
+        # The integration token is only changed through its regenerate endpoint
+        # (never set to an arbitrary / empty value from the generic form).
+        if key == INTEGRATION_TOKEN_KEY:
+            continue
         result = await db.execute(
             select(AppSettings).where(AppSettings.key == key)
         )
@@ -47,6 +62,14 @@ async def update_settings(
 
     await db.commit()
     return {"status": "ok"}
+
+
+@router.post("/integration-token/regenerate")
+async def regenerate_token(db: AsyncSession = Depends(get_db)):
+    """Generate a new integration token. The previous one stops working at once
+    (Control Ventas must be updated with the new value)."""
+    token = await regenerate_integration_token(db)
+    return {"status": "ok", "integration_token": token}
 
 
 @router.post("/telegram/test")
