@@ -6,7 +6,6 @@ Jobs are added with G-code upload and dispatched automatically.
 import asyncio
 import json
 import os
-import shutil
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -21,33 +20,78 @@ from app.config import settings
 from app.ws.hub import ws_hub
 from app.services.gcode_parser import parse_gcode
 from app.services.dispatcher import dispatcher
+from app.security import gcodes_root, is_within, sanitize_filename, sanitize_material
 
 router = APIRouter(prefix="/api/queue", tags=["queue"])
+
+
+_GCODE_EXTS = (".gcode", ".gco", ".g")
+_COPY_CHUNK = 1024 * 1024  # 1 MB
 
 
 def _organize_gcode_path(material: str, original_name: str) -> str:
     """
     Create an organized path for the G-code file:
     gcodes/{YYYY-MM}/{material}/{original_name}
+
+    Both ``material`` and ``original_name`` come from the client, so they are
+    sanitized (basename + safe charset, material alphanumeric only) and the
+    final path is verified with realpath to live inside gcodes_path. Raises
+    HTTP 400 otherwise.
     """
     now = datetime.now()
     date_folder = now.strftime("%Y-%m")
-    material_folder = material.upper() if material else "OTHER"
+    material_folder = sanitize_material(material)
+    safe_name = sanitize_filename(original_name)
 
-    relative_dir = os.path.join(date_folder, material_folder)
-    full_dir = os.path.join(settings.gcodes_path, relative_dir)
+    root = gcodes_root()
+    full_dir = os.path.realpath(os.path.join(root, date_folder, material_folder))
+    if not is_within(root, full_dir):
+        raise HTTPException(status_code=400, detail="Ruta de destino inválida")
     os.makedirs(full_dir, exist_ok=True)
 
     # Avoid filename collisions
-    base_name = original_name
-    full_path = os.path.join(full_dir, base_name)
+    full_path = os.path.join(full_dir, safe_name)
     counter = 1
     while os.path.exists(full_path):
-        name, ext = os.path.splitext(base_name)
+        name, ext = os.path.splitext(safe_name)
         full_path = os.path.join(full_dir, f"{name}_{counter}{ext}")
         counter += 1
 
+    if not is_within(root, os.path.realpath(full_path)):
+        raise HTTPException(status_code=400, detail="Ruta de destino inválida")
     return full_path
+
+
+def _stream_upload_to_disk(src, dest_path: str, max_bytes: int) -> int:
+    """Copy an upload's file object to ``dest_path`` in 1 MB chunks.
+
+    Never holds the whole file in memory. Returns the number of bytes written,
+    or raises ValueError (after deleting the partial file) if the upload is
+    larger than ``max_bytes``.
+    """
+    written = 0
+    try:
+        src.seek(0)
+    except Exception:
+        pass
+    try:
+        with open(dest_path, "wb") as out:
+            while True:
+                chunk = src.read(_COPY_CHUNK)
+                if not chunk:
+                    break
+                written += len(chunk)
+                if written > max_bytes:
+                    raise ValueError("too_large")
+                out.write(chunk)
+    except BaseException:
+        try:
+            os.remove(dest_path)
+        except OSError:
+            pass
+        raise
+    return written
 
 
 @router.get("", response_model=List[PrintJobResponse])
@@ -118,17 +162,33 @@ async def add_job(
             detail="compatible_models must be a valid JSON array string"
         )
 
-    # Save the G-code file in an organized structure
-    gcode_path = _organize_gcode_path(required_material, gcode.filename)
+    # Save the G-code file in an organized structure (sanitized name/material,
+    # confined to gcodes_path) by streaming it to disk with a size cap.
+    original_name = sanitize_filename(gcode.filename)
+    if not original_name.lower().endswith(_GCODE_EXTS):
+        raise HTTPException(
+            status_code=400,
+            detail="El archivo debe ser un G-code (.gcode, .gco o .g)",
+        )
+    max_bytes = max(1, settings.max_gcode_mb) * 1024 * 1024
+    if gcode.size is not None and gcode.size > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"El G-code supera el máximo permitido ({settings.max_gcode_mb} MB)",
+        )
+    gcode_path = _organize_gcode_path(required_material, original_name)
 
     try:
-        content = await gcode.read()
-        def _save():
-            with open(gcode_path, "wb") as f:
-                f.write(content)
-        await asyncio.to_thread(_save)
+        await asyncio.to_thread(_stream_upload_to_disk, gcode.file, gcode_path, max_bytes)
+    except ValueError:
+        raise HTTPException(
+            status_code=413,
+            detail=f"El G-code supera el máximo permitido ({settings.max_gcode_mb} MB)",
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error saving file: {str(e)}")
+    finally:
+        await gcode.close()
 
     # Parse G-code for estimates (in a separate thread to prevent blocking)
     parsed = await asyncio.to_thread(parse_gcode, gcode_path, required_material)
@@ -143,7 +203,7 @@ async def add_job(
         job = PrintJob(
             name=name if n == 1 else f"{name} ({i + 1}/{n})",
             gcode_filename=gcode_path,
-            gcode_original_name=gcode.filename,
+            gcode_original_name=original_name,
             compatible_models=compatible_models,
             required_nozzle=required_nozzle,
             required_material=required_material,

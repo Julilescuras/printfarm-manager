@@ -21,6 +21,7 @@ from app.config import settings
 from app.database import get_db
 from app.models.print_job import PrintJob, PrintHistory
 from app.services.gcode_thumbnail import extract_gcode_thumbnail
+from app.security import gcodes_root, is_within, resolve_within_gcodes
 
 router = APIRouter(prefix="/api/files", tags=["files"])
 
@@ -64,19 +65,18 @@ class SearchResult(BaseModel):
 # ─── Path safety ─────────────────────────────────────────────────────────────
 
 def _root() -> str:
-    return os.path.realpath(settings.gcodes_path)
+    return gcodes_root()
 
 
 def _resolve_within_root(rel_path: str) -> str:
     """Resolve a client-supplied relative path inside gcodes_path.
 
-    Raises HTTP 400 if the resolved path escapes the root (path traversal).
-    Empty / "." / "/" all map to the root itself.
+    Raises HTTP 400 if the resolved path escapes the root (path traversal,
+    absolute paths, symlinks pointing outside). Empty / "." / "/" all map to
+    the root itself.
     """
-    root = _root()
-    cleaned = (rel_path or "").strip().lstrip("/\\")
-    target = os.path.realpath(os.path.join(root, cleaned))
-    if target != root and not target.startswith(root + os.sep):
+    target = resolve_within_gcodes(rel_path)
+    if target is None:
         raise HTTPException(status_code=400, detail="Ruta inválida")
     return target
 
@@ -183,7 +183,11 @@ async def search_files(q: str = Query(..., min_length=1)):
             dirnames[:] = [d for d in dirnames if not d.startswith(".")]
             for name in filenames:
                 if _is_gcode(name) and needle in name.lower():
-                    found.append(_file_node(os.path.join(dirpath, name)))
+                    full = os.path.join(dirpath, name)
+                    # Never list a symlink that points outside the root.
+                    if not is_within(root, os.path.realpath(full)):
+                        continue
+                    found.append(_file_node(full))
                     if len(found) >= _SEARCH_LIMIT:
                         return found
         return found
@@ -210,7 +214,7 @@ async def download_file(path: str = Query(...)):
 async def file_thumbnail(path: str = Query(...)):
     """Serve the embedded preview of a stored G-code (204 if it has none)."""
     target = _resolve_within_root(path)
-    if not os.path.isfile(target):
+    if not os.path.isfile(target) or not _is_gcode(os.path.basename(target)):
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
 
     img = await asyncio.to_thread(extract_gcode_thumbnail, target)
@@ -250,8 +254,7 @@ async def _resolve_history_file(history_id: int, db: AsyncSession) -> Optional[s
         return None
 
     resolved = os.path.realpath(candidate)
-    root = _root()
-    if resolved != root and not resolved.startswith(root + os.sep):
+    if not is_within(_root(), resolved):
         return None
     if not os.path.isfile(resolved):
         return None

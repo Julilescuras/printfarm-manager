@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     # G-code storage
     gcodes_path: str = "/app/gcodes"
 
+    # Max size of an uploaded G-code, in MB (env MAX_GCODE_MB). Uploads are
+    # streamed to disk and aborted with HTTP 413 once they cross this limit.
+    max_gcode_mb: int = 200
+
     # Subfolder used inside each Moonraker printer's gcodes directory
     moonraker_upload_folder: str = "3Dprint-manager"
 
