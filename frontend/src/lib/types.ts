@@ -61,6 +61,13 @@ export interface PrintJob {
   started_at: string | null;
   created_at: string | null;
   updated_at: string | null;
+  // Integración / biblioteca
+  library_id?: number | null;
+  order_id?: string | null;
+  line_id?: string | null;
+  order_ref?: string | null;
+  is_test?: boolean;
+  source?: "manual" | "cv" | string;
 }
 
 export type JobStatus = "pending" | "paused" | "printing" | "completed" | "cancelled";
@@ -86,6 +93,55 @@ export interface PrintHistoryEntry {
   completed_at: string | null;
   duration_secs: number | null;
   result: PrintResult;
+  // Integración / biblioteca
+  library_id?: number | null;
+  order_id?: string | null;
+  line_id?: string | null;
+  order_ref?: string | null;
+  is_test?: boolean;
+  source?: string;
+  outcome?: BedOutcome | null;
+  outcome_note?: string | null;
+}
+
+export type BedOutcome = "ok" | "bad";
+
+export type LibraryStatus = "draft" | "testing" | "approved" | "rejected" | "review";
+
+export interface LibraryEntry {
+  id: number;
+  product_key: string;
+  product_id: string | null;
+  product_name: string;
+  size: string;
+  kind: string | null;
+  printer_model: string;
+  nozzle: number;
+  material: string;
+  filament_id: number | null;
+  units_per_plate: number;
+  gcode_path: string;
+  original_name: string;
+  gcode_url: string;
+  file_exists: boolean;
+  estimated_time_secs: number | null;
+  estimated_weight_g: number | null;
+  stl_fingerprint: string | null;
+  status: LibraryStatus;
+  notes: string | null;
+  test_job_id: number | null;
+  approved_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface ClearBedResult {
+  status: string;
+  printer_status: string;
+  dispatched: boolean;
+  outcome: BedOutcome | null;
+  library_status: LibraryStatus | null;
+  message: string;
 }
 
 // ── File explorer (G-code storage) ──────────────────────────────────────────

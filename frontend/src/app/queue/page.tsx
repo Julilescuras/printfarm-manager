@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { PrintJob, PrintHistoryEntry } from "@/lib/types";
+import { JobChips } from "@/components/queue/job-chips";
 import { useWSContext } from "@/providers/websocket-provider";
 import { JobDetailModal } from "@/components/queue/job-detail-modal";
 
@@ -619,7 +620,15 @@ function HistoryTable({
                 }}
                 className="border-b border-border/50 hover:bg-secondary/30 transition-colors cursor-pointer focus:outline-none focus:bg-secondary/40"
               >
-                <td className="p-3 font-medium">{entry.job_name || entry.gcode_filename}</td>
+                <td className="p-3 font-medium">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span>{entry.job_name || entry.gcode_filename}</span>
+                    <JobChips orderRef={entry.order_ref} isTest={entry.is_test} />
+                    {entry.outcome === "bad" && (
+                      <span className="text-xs text-red-400" title={entry.outcome_note || "Salió mal"}>❌</span>
+                    )}
+                  </div>
+                </td>
                 <td className="p-3 text-muted-foreground">{entry.printer_name || `#${entry.printer_id}`}</td>
                 <td className="p-3 text-muted-foreground">{entry.material || "-"}</td>
                 <td className="p-3 text-muted-foreground">
@@ -878,6 +887,7 @@ function JobCard({
           >
             {STATUS_LABELS[job.status] || job.status}
           </span>
+          <JobChips orderRef={job.order_ref} isTest={job.is_test} />
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
           <span className="flex items-center gap-1">

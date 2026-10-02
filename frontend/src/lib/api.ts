@@ -2,7 +2,10 @@
  * API Client — Base fetch wrapper for backend API calls.
  */
 
-import type { BrowseResult, FileNode, PrintHistoryEntry } from "./types";
+import type {
+  BrowseResult, FileNode, PrintHistoryEntry, LibraryEntry, LibraryStatus,
+  PrintJob, BedOutcome, ClearBedResult,
+} from "./types";
 
 let API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 if (typeof window !== "undefined") {
@@ -107,8 +110,12 @@ export const api = {
     }),
   deletePrinter: (id: number) =>
     apiFetch<void>(`/api/printers/${id}`, { method: "DELETE" }),
-  clearBed: (id: number) =>
-    apiFetch<any>(`/api/printers/${id}/clear-bed`, { method: "POST" }),
+  clearBed: (id: number, verdict?: { outcome?: BedOutcome; note?: string }) =>
+    apiFetch<ClearBedResult>(`/api/printers/${id}/clear-bed`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(verdict ?? {}),
+    }),
   assignSpool: (printerId: number, spoolId: number | null) =>
     apiFetch<any>(`/api/printers/${printerId}/spool`, {
       method: "PUT",
@@ -251,6 +258,32 @@ export const api = {
     return promise;
   },
   getFilaments: () => apiFetch<any[]>("/api/spoolman/filaments"),
+
+  // Biblioteca de G-codes
+  getLibrary: (params: { product_key?: string; status?: string; printer_model?: string; size?: string } = {}) => {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => { if (v) qs.set(k, v); });
+    const q = qs.toString();
+    return apiFetch<LibraryEntry[]>(`/api/library${q ? `?${q}` : ""}`);
+  },
+  uploadLibraryEntry: (formData: FormData) =>
+    apiFetch<LibraryEntry>("/api/library", { method: "POST", body: formData }),
+  updateLibraryEntry: (id: number, data: Partial<{ status: LibraryStatus; notes: string }>) =>
+    apiFetch<LibraryEntry>(`/api/library/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
+  deleteLibraryEntry: (id: number) =>
+    apiFetch<{ status: string; file_deleted: boolean; message: string }>(`/api/library/${id}`, {
+      method: "DELETE",
+    }),
+  enqueueLibraryEntry: (id: number, data: { copies: number; order_ref?: string }) =>
+    apiFetch<PrintJob[]>(`/api/library/${id}/enqueue`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
 
   // Settings
   getSettings: () => apiFetch<Record<string, string>>("/api/settings"),

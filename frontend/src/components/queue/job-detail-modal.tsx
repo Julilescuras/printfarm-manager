@@ -6,6 +6,7 @@ import {
   CheckCircle, XCircle, AlertTriangle, Loader2,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { JobChips } from "@/components/queue/job-chips";
 import type { PrintHistoryEntry, PrintResult } from "@/lib/types";
 import { cn, formatDuration, formatDateTime } from "@/lib/utils";
 import { GcodeThumbnail } from "@/components/files/gcode-thumbnail";
@@ -148,6 +149,38 @@ export function JobDetailModal({
               <DataCard icon={<Calendar className="w-3.5 h-3.5" />} label="Iniciado" value={formatDateTime(entry.started_at)} mono />
               <DataCard icon={<Calendar className="w-3.5 h-3.5" />} label="Completado" value={formatDateTime(entry.completed_at)} mono />
             </div>
+
+            {(entry.order_ref || entry.order_id || entry.line_id || entry.library_id || entry.is_test || entry.outcome) && (
+              <div className="rounded-lg border border-border bg-card/40 px-3 py-2 space-y-1 text-sm">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <JobChips orderRef={entry.order_ref} isTest={entry.is_test} />
+                  {entry.source === "cv" && (
+                    <span className="text-xs px-2 py-0.5 rounded-full border border-border text-muted-foreground">
+                      Desde Control Ventas
+                    </span>
+                  )}
+                  {entry.outcome && (
+                    <span className="text-xs">
+                      {entry.outcome === "ok" ? "✅ Salió bien" : "❌ Salió mal"}
+                    </span>
+                  )}
+                </div>
+                {entry.order_id && (
+                  <div className="text-xs text-muted-foreground">
+                    Pedido: <span className="font-mono">{entry.order_id}</span>
+                    {entry.line_id && <> · Línea: <span className="font-mono">{entry.line_id}</span></>}
+                  </div>
+                )}
+                {entry.library_id && (
+                  <div className="text-xs text-muted-foreground">
+                    Biblioteca: <a href="/library" className="underline hover:text-foreground">entrada #{entry.library_id}</a>
+                  </div>
+                )}
+                {entry.outcome_note && (
+                  <div className="text-xs text-muted-foreground">Nota: {entry.outcome_note}</div>
+                )}
+              </div>
+            )}
 
             <div className="glass-card p-4 space-y-4 bg-secondary/30">
               <EstimateVsActualBar

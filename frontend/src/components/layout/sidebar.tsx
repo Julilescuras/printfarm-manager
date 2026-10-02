@@ -17,6 +17,7 @@ import {
   X,
   ExternalLink,
   FolderOpen,
+  Library,
 } from "lucide-react";
 import { useWSContext } from "@/providers/websocket-provider";
 import { api, SPOOLMAN_URL } from "@/lib/api";
@@ -25,6 +26,7 @@ import { cn } from "@/lib/utils";
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/queue", label: "Cola de Impresión", icon: ListOrdered },
+  { href: "/library", label: "Biblioteca", icon: Library },
   { href: "/files", label: "Archivos", icon: FolderOpen },
   { href: "/printers", label: "Impresoras", icon: Printer },
   { href: "/filament", label: "Filamento", icon: Palette },

@@ -18,6 +18,7 @@ import {
 import { useWSContext } from "@/providers/websocket-provider";
 import { api } from "@/lib/api";
 import { getStatusInfo, formatDuration, hasActivePrint } from "@/lib/utils";
+import { ClearBedDialog } from "@/components/dashboard/clear-bed-dialog";
 import { PrinterMediaView } from "@/components/dashboard/printer-media-view";
 
 export default function PrinterDetailsPage() {
@@ -26,6 +27,7 @@ export default function PrinterDetailsPage() {
   const printerId = parseInt(params.id as string, 10);
 
   const { printers, isConnected, refreshState } = useWSContext();
+  const [showClear, setShowClear] = useState(false);
   const [spoolInfo, setSpoolInfo] = useState<any>(null);
   const [isLoadingSpool, setIsLoadingSpool] = useState(false);
   const [isSettingStatus, setIsSettingStatus] = useState(false);
@@ -61,14 +63,6 @@ export default function PrinterDetailsPage() {
       </div>
     );
   }
-
-  const handleClearBed = async () => {
-    try {
-      await api.clearBed(printer.id);
-    } catch {
-      alert("Error al vaciar la cama");
-    }
-  };
 
   const handleUnassignSpool = async () => {
     try {
@@ -148,6 +142,14 @@ export default function PrinterDetailsPage() {
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
+      {showClear && (
+        <ClearBedDialog
+          printerId={printer.id}
+          printerName={printer.name}
+          onClose={() => setShowClear(false)}
+          onDone={refreshState}
+        />
+      )}
       {/* Header */}
       <div className="flex items-center gap-4">
         <button
@@ -286,7 +288,7 @@ export default function PrinterDetailsPage() {
                 </div>
                 {printer.status === "requires_clearance" && (
                   <button
-                    onClick={handleClearBed}
+                    onClick={() => setShowClear(true)}
                     className="w-full mt-2 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg font-semibold shadow-lg shadow-purple-500/20 transition-all text-sm"
                   >
                     Vaciar Cama (Clear Bed)

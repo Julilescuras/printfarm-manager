@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { Check, Copy, Eye, EyeOff, Link2, Loader2, RefreshCw } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, apiUrl } from "@/lib/api";
 
 // Tarjeta "Integración con Control Ventas": muestra, copia y regenera el token
 // que Control Ventas usa para llamar a /api/integration/* (Authorization: Bearer).
@@ -14,6 +14,11 @@ export function IntegrationPanel() {
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [url, setUrl] = useState("");
+
+  useEffect(() => {
+    setUrl(apiUrl(""));
+  }, []);
 
   useEffect(() => {
     api
@@ -67,6 +72,21 @@ export function IntegrationPanel() {
         Pegá este token en Control Ventas para que pueda consultar la granja y mandar
         trabajos. Viaja como <code className="bg-secondary px-1 rounded">Authorization: Bearer</code>.
       </p>
+
+      <div className="space-y-1">
+        <label className="text-xs text-muted-foreground">URL de PrintFarm</label>
+        <input
+          readOnly
+          value={url}
+          onFocus={(e) => e.target.select()}
+          className="w-full px-3 py-2 rounded-lg bg-secondary border border-border outline-none text-sm font-mono"
+          aria-label="URL de PrintFarm"
+        />
+        <p className="text-xs text-muted-foreground">
+          Pegá esta URL (con el puerto <code className="bg-secondary px-1 rounded">:8000</code>) y el token en
+          Control Ventas → Configuración.
+        </p>
+      </div>
 
       {loading ? (
         <Loader2 className="w-5 h-5 animate-spin text-primary" />

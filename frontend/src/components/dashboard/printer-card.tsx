@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import { ProgressRing } from "./progress-ring";
 import { TemperatureGauge } from "./temperature-gauge";
 import { PrinterMediaView } from "./printer-media-view";
+import { ClearBedDialog } from "./clear-bed-dialog";
 
 interface PrinterCardProps {
   printer: PrinterState;
@@ -15,7 +16,7 @@ interface PrinterCardProps {
 }
 
 export const PrinterCard = React.memo(function PrinterCard({ printer, onUpdate }: PrinterCardProps) {
-  const [isClearing, setIsClearing] = useState(false);
+  const [showClear, setShowClear] = useState(false);
   const [spoolInfo, setSpoolInfo] = useState<any>(null);
   const statusInfo = getStatusInfo(printer.status);
 
@@ -29,18 +30,10 @@ export const PrinterCard = React.memo(function PrinterCard({ printer, onUpdate }
     }
   }, [printer.current_spool_id]);
 
-  const handleClearBed = async (e: React.MouseEvent) => {
+  const handleClearBed = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsClearing(true);
-    try {
-      await api.clearBed(printer.id);
-      onUpdate?.();
-    } catch (error) {
-      console.error("Error clearing bed:", error);
-    } finally {
-      setIsClearing(false);
-    }
+    setShowClear(true);
   };
 
   return (
@@ -136,13 +129,21 @@ export const PrinterCard = React.memo(function PrinterCard({ printer, onUpdate }
       {printer.status === "requires_clearance" && (
         <button
           onClick={handleClearBed}
-          disabled={isClearing}
-          className="btn-clear-bed flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="btn-clear-bed flex items-center justify-center gap-2 "
           id={`clear-bed-${printer.id}`}
         >
           <Trash2 className="w-4 h-4" />
-          {isClearing ? "Vaciando..." : "🧹 Vaciar Cama y Continuar"}
+          🧹 Vaciar Cama y Continuar
         </button>
+      )}
+
+      {showClear && (
+        <ClearBedDialog
+          printerId={printer.id}
+          printerName={printer.name}
+          onClose={() => setShowClear(false)}
+          onDone={onUpdate}
+        />
       )}
 
       {/* Offline message */}
