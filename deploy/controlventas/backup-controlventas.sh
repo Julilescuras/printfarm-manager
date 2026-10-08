@@ -3,7 +3,7 @@
 # Independiente de OneDrive. Cron sugerido (usuario del servidor):
 #   0 3 * * * /home/<usuario>/printfarm-manager/deploy/controlventas/backup-controlventas.sh
 set -euo pipefail
-SRC="/srv/ziegel/OneDrive/2026/dieseños 2026/.controlventas"
+SRC="/srv/ziegel/OneDrive/3D/Diseños/dieseños 2026/.controlventas"
 DST="/srv/ziegel/backups"
 mkdir -p "$DST"
 [ -d "$SRC" ] || { echo "No existe $SRC"; exit 1; }

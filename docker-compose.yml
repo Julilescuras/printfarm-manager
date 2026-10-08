@@ -103,7 +103,7 @@ services:
     # --single-directory evita recorrer todo el OneDrive en cada revisión.
     user: "${CV_UID:-1000}:${CV_GID:-1000}"
     entrypoint: ["/usr/local/bin/onedrive"]
-    command: ["--confdir", "/onedrive/conf", "--syncdir", "/onedrive/data", "--monitor", "--single-directory", "2026/dieseños 2026"]
+    command: ["--confdir", "/onedrive/conf", "--syncdir", "/onedrive/data", "--monitor", "--single-directory", "3D/Diseños/dieseños 2026"]
     environment:
       - HOME=/onedrive/conf
       - TZ=America/Argentina/Buenos_Aires
@@ -139,7 +139,7 @@ services:
       - CONTROLVENTAS_ONEDRIVE_LOG=${CV_ONEDRIVE_LOG:-}
       - TZ=America/Argentina/Buenos_Aires
     volumes:
-      - /srv/ziegel/OneDrive/2026:/catalogo
+      - /srv/ziegel/OneDrive/3D/Diseños:/catalogo
       - /srv/ziegel/onedrive-conf/logs:/onedrive-logs:ro
     depends_on:
       - onedrive-sync
