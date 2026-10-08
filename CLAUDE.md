@@ -12,7 +12,7 @@ Orquestador de granja de impresión 3D. Monorepo con:
 - **Directorio:** `/home/ziegelimpresoras3D/printfarm-manager`
 - **Acceso SSH programático:** usar `paramiko` (ya instalado en el proyecto), ver `scripts/update_server.py` como referencia
 
-## Versión actual: 3.0.0
+## Versión actual: 3.0.1
 
 ### Dónde vive la versión — tocar SOLO este archivo al hacer bump:
 1. `backend/app/version.py` → `APP_VERSION = "X.Y.Z"` ← fuente de verdad única

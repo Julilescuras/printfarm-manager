@@ -20,7 +20,7 @@ import {
   Library,
 } from "lucide-react";
 import { useWSContext } from "@/providers/websocket-provider";
-import { api, SPOOLMAN_URL } from "@/lib/api";
+import { api, getSpoolmanUrl } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -49,6 +49,11 @@ export function Sidebar({ collapsed = false, onNavigate, onToggleCollapse, onClo
   const pathname = usePathname();
   const { printers, activeAlerts, isConnected } = useWSContext();
   const [version, setVersion] = useState<string>("");
+  const [spoolmanUrl, setSpoolmanUrl] = useState<string>("");
+
+  useEffect(() => {
+    setSpoolmanUrl(getSpoolmanUrl());
+  }, []);
 
   useEffect(() => {
     api.getSystemStatus()
@@ -160,7 +165,7 @@ export function Sidebar({ collapsed = false, onNavigate, onToggleCollapse, onClo
       {/* Spoolman link */}
       <div className={cn("border-t border-border", collapsed ? "p-2" : "p-4")}>
         <a
-          href={SPOOLMAN_URL}
+          href={spoolmanUrl || undefined}
           target="_blank"
           rel="noopener noreferrer"
           title="Abrir Spoolman"

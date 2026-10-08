@@ -26,10 +26,13 @@ export function apiUrl(path: string): string {
   return `${API_BASE}${path}`;
 }
 
-/** URL pública de Spoolman — mismo host que el backend pero puerto 7912. */
-export const SPOOLMAN_URL = API_BASE
-  ? API_BASE.replace(/:(\d+)$/, ":7912")
-  : `http://${typeof window !== "undefined" ? window.location.hostname : "localhost"}:7912`;
+/** URL pública de Spoolman — mismo host desde el que se abre el Manager, puerto 7912.
+ *  Llamar solo en el cliente (useEffect/handlers): en SSR no hay window y
+ *  quedaría "localhost", que React no corrige al hidratar. */
+export function getSpoolmanUrl(): string {
+  const host = typeof window !== "undefined" ? window.location.hostname : "localhost";
+  return `http://${host}:7912`;
+}
 
 export async function apiFetch<T>(
   path: string,
