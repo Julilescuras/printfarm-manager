@@ -54,15 +54,20 @@ fi
 # timeout 300s: docker pull puede quedarse colgado indefinidamente sin red.
 echo ""
 echo "[2/3] Descargando imágenes Docker desde GitHub Container Registry..."
-if ! timeout 600 docker compose pull; then
+if ! timeout 600 docker compose pull --ignore-pull-failures; then
     echo "      ⚠ 'docker compose pull' falló o tardó >10 min — se intenta recrear con la caché local"
 fi
 
 # ── 3. Recrear servicios (PASO CRÍTICO) ───────────────────────────────────────
 echo ""
 echo "[3/3] Reiniciando servicios con la nueva versión..."
-if docker compose up -d; then
+# Primero el Manager (crítico); después los opcionales (Control Ventas, OneDrive),
+# así un fallo de esos nunca deja al Manager sin actualizar.
+if docker compose up -d backend frontend spoolman; then
     echo "      ✓ Servicios recreados"
+    if ! docker compose up -d; then
+        echo "      ⚠ Los servicios opcionales (Control Ventas/OneDrive) no arrancaron — el Manager sigue OK"
+    fi
 
     # Recién acá la actualización se considera exitosa: borramos la banderita
     # para que el watchdog no reintente.

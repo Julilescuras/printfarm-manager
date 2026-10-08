@@ -88,6 +88,71 @@ services:
       - printfarm
 
 
+  # ─────────────────────────────────────────────
+  # Control Ventas + sincronización OneDrive (perfil opcional "controlventas")
+  # Solo arrancan si el .env del servidor tiene COMPOSE_PROFILES=controlventas.
+  # Prioridad: el Manager es lo crítico → estos dos llevan límites estrictos y
+  # oom_score_adj alto para que, si falta memoria, Linux los corte a ellos primero.
+  # ─────────────────────────────────────────────
+  onedrive-sync:
+    image: driveone/onedrive:2.5.11-debian   # versión fija: es lo único que puede borrar archivos
+    container_name: ziegel-onedrive
+    profiles: ["controlventas"]
+    environment:
+      - ONEDRIVE_UID=${CV_UID:-1000}
+      - ONEDRIVE_GID=${CV_GID:-1000}
+      - TZ=America/Argentina/Buenos_Aires
+    volumes:
+      - /srv/ziegel/onedrive-conf:/onedrive/conf
+      - /srv/ziegel/OneDrive:/onedrive/data
+    restart: unless-stopped
+    oom_score_adj: 900
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  controlventas:
+    image: ghcr.io/julilescuras/controlventas:latest
+    container_name: ziegel-controlventas
+    profiles: ["controlventas"]
+    user: "${CV_UID:-1000}:${CV_GID:-1000}"   # mismo dueño que los archivos que baja onedrive-sync
+    ports:
+      - "3100:3000"
+    environment:
+      - CONTROLVENTAS_MODE=server
+      - CONTROLVENTAS_ROOT=/catalogo/dieseños 2026
+      - CONTROLVENTAS_ALLOWED_HOSTS=${CV_ALLOWED_HOSTS:-192.168.20.25,100.126.215.99}
+      - CONTROLVENTAS_PRINTFARM_URL=http://backend:8000
+      - CONTROLVENTAS_PRINTFARM_TOKEN=${CONTROLVENTAS_PRINTFARM_TOKEN:-}
+      - CONTROLVENTAS_ONEDRIVE_LOG=${CV_ONEDRIVE_LOG:-}
+      - TZ=America/Argentina/Buenos_Aires
+    volumes:
+      - /srv/ziegel/OneDrive/2026:/catalogo
+      - /srv/ziegel/onedrive-conf/logs:/onedrive-logs:ro
+    depends_on:
+      - onedrive-sync
+    restart: unless-stopped
+    oom_score_adj: 800
+    networks:
+      - printfarm
+    deploy:
+      resources:
+        limits:
+          cpus: '0.75'
+          memory: 384M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
   spoolman_data:
     driver: local
