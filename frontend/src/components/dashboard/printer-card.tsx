@@ -8,7 +8,7 @@ import { api } from "@/lib/api";
 import { ProgressRing } from "./progress-ring";
 import { TemperatureGauge } from "./temperature-gauge";
 import { PrinterMediaView } from "./printer-media-view";
-import { ClearBedDialog } from "./clear-bed-dialog";
+import { ClearBedDialog, clearBedOrAsk } from "./clear-bed-dialog";
 
 interface PrinterCardProps {
   printer: PrinterState;
@@ -17,6 +17,7 @@ interface PrinterCardProps {
 
 export const PrinterCard = React.memo(function PrinterCard({ printer, onUpdate }: PrinterCardProps) {
   const [showClear, setShowClear] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
   const [spoolInfo, setSpoolInfo] = useState<any>(null);
   const statusInfo = getStatusInfo(printer.status);
 
@@ -30,10 +31,15 @@ export const PrinterCard = React.memo(function PrinterCard({ printer, onUpdate }
     }
   }, [printer.current_spool_id]);
 
-  const handleClearBed = (e: React.MouseEvent) => {
+  const handleClearBed = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setShowClear(true);
+    setIsClearing(true);
+    try {
+      await clearBedOrAsk(printer.id, () => setShowClear(true), onUpdate);
+    } finally {
+      setIsClearing(false);
+    }
   };
 
   return (
@@ -129,11 +135,12 @@ export const PrinterCard = React.memo(function PrinterCard({ printer, onUpdate }
       {printer.status === "requires_clearance" && (
         <button
           onClick={handleClearBed}
-          className="btn-clear-bed flex items-center justify-center gap-2 "
+          disabled={isClearing}
+          className="btn-clear-bed flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           id={`clear-bed-${printer.id}`}
         >
           <Trash2 className="w-4 h-4" />
-          🧹 Vaciar Cama y Continuar
+          {isClearing ? "Vaciando..." : "🧹 Vaciar Cama y Continuar"}
         </button>
       )}
 

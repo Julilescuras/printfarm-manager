@@ -18,7 +18,7 @@ import {
 import { useWSContext } from "@/providers/websocket-provider";
 import { api } from "@/lib/api";
 import { getStatusInfo, formatDuration, hasActivePrint } from "@/lib/utils";
-import { ClearBedDialog } from "@/components/dashboard/clear-bed-dialog";
+import { ClearBedDialog, clearBedOrAsk } from "@/components/dashboard/clear-bed-dialog";
 import { PrinterMediaView } from "@/components/dashboard/printer-media-view";
 
 export default function PrinterDetailsPage() {
@@ -288,7 +288,7 @@ export default function PrinterDetailsPage() {
                 </div>
                 {printer.status === "requires_clearance" && (
                   <button
-                    onClick={() => setShowClear(true)}
+                    onClick={() => clearBedOrAsk(printer.id, () => setShowClear(true), refreshState)}
                     className="w-full mt-2 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg font-semibold shadow-lg shadow-purple-500/20 transition-all text-sm"
                   >
                     Vaciar Cama (Clear Bed)

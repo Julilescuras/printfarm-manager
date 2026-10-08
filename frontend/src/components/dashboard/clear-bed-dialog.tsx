@@ -7,6 +7,36 @@ import type { BedOutcome, LastPrintInfo } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
+ * Botón "Vaciar cama": si la última impresión NO es una prueba de la biblioteca, vacía en un
+ * clic como antes de la integración (el flujo diario no cambia). Solo abre el diálogo cuando hay
+ * que pedir veredicto, o si no se pudo consultar /last-print.
+ */
+export async function clearBedOrAsk(
+  printerId: number,
+  ask: () => void,
+  onDone?: () => void,
+): Promise<void> {
+  let info: LastPrintInfo;
+  try {
+    info = await api.getLastPrint(printerId);
+  } catch {
+    ask();
+    return;
+  }
+  if (info.needs_verdict) {
+    ask();
+    return;
+  }
+  try {
+    await api.clearBed(printerId);
+    onDone?.();
+  } catch (error) {
+    console.error("Error clearing bed:", error);
+    ask();
+  }
+}
+
+/**
  * Diálogo único para vaciar la cama. Lo usan el dashboard y el detalle de impresora.
  * Consulta GET /printers/{id}/last-print (la misma fila que juzgará el backend): si era una prueba
  * (is_test) pregunta "¿Salió bien?"; si no, vacía normal con opción discreta "Salió mal".
