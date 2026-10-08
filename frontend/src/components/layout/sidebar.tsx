@@ -18,9 +18,10 @@ import {
   ExternalLink,
   FolderOpen,
   Library,
+  ShoppingBag,
 } from "lucide-react";
 import { useWSContext } from "@/providers/websocket-provider";
-import { api, getSpoolmanUrl } from "@/lib/api";
+import { api, getControlVentasUrl, getSpoolmanUrl } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -50,9 +51,11 @@ export function Sidebar({ collapsed = false, onNavigate, onToggleCollapse, onClo
   const { printers, activeAlerts, isConnected } = useWSContext();
   const [version, setVersion] = useState<string>("");
   const [spoolmanUrl, setSpoolmanUrl] = useState<string>("");
+  const [cvUrl, setCvUrl] = useState<string>("");
 
   useEffect(() => {
     setSpoolmanUrl(getSpoolmanUrl());
+    setCvUrl(getControlVentasUrl());
   }, []);
 
   useEffect(() => {
@@ -162,8 +165,26 @@ export function Sidebar({ collapsed = false, onNavigate, onToggleCollapse, onClo
         })}
       </nav>
 
-      {/* Spoolman link */}
-      <div className={cn("border-t border-border", collapsed ? "p-2" : "p-4")}>
+      {/* Links a las otras apps */}
+      <div className={cn("border-t border-border space-y-1", collapsed ? "p-2" : "p-4")}>
+        <a
+          href={cvUrl || undefined}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Abrir Control Ventas"
+          className={cn(
+            "sidebar-link w-full",
+            collapsed && "justify-center px-0"
+          )}
+        >
+          <ShoppingBag className="w-5 h-5 shrink-0" />
+          {!collapsed && (
+            <>
+              <span className="truncate">Control Ventas</span>
+              <ExternalLink className="w-3.5 h-3.5 ml-auto text-muted-foreground" />
+            </>
+          )}
+        </a>
         <a
           href={spoolmanUrl || undefined}
           target="_blank"

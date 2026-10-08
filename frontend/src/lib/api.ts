@@ -34,6 +34,12 @@ export function getSpoolmanUrl(): string {
   return `http://${host}:7912`;
 }
 
+/** URL de Control Ventas — mismo host que el Manager, puerto 3100. Solo en el cliente. */
+export function getControlVentasUrl(): string {
+  const host = typeof window !== "undefined" ? window.location.hostname : "localhost";
+  return `http://${host}:3100`;
+}
+
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {}
