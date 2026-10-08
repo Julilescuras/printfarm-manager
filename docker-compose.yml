@@ -98,9 +98,14 @@ services:
     image: driveone/onedrive:2.5.11-debian   # versión fija: es lo único que puede borrar archivos
     container_name: ziegel-onedrive
     profiles: ["controlventas"]
+    # Se llama al binario directo: el entrypoint de la imagen corta en los espacios
+    # el valor de ONEDRIVE_SINGLE_DIRECTORY ("dieseños 2026" → "dieseños").
+    # --single-directory evita recorrer todo el OneDrive en cada revisión.
+    user: "${CV_UID:-1000}:${CV_GID:-1000}"
+    entrypoint: ["/usr/local/bin/onedrive"]
+    command: ["--confdir", "/onedrive/conf", "--syncdir", "/onedrive/data", "--monitor", "--single-directory", "2026/dieseños 2026"]
     environment:
-      - ONEDRIVE_UID=${CV_UID:-1000}
-      - ONEDRIVE_GID=${CV_GID:-1000}
+      - HOME=/onedrive/conf
       - TZ=America/Argentina/Buenos_Aires
     volumes:
       - /srv/ziegel/onedrive-conf:/onedrive/conf

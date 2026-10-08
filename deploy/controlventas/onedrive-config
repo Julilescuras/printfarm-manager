@@ -1,5 +1,5 @@
 # Config del cliente abraunegg/onedrive (contenedor ziegel-onedrive).
-# Se copia a /srv/ziegel/onedrive-conf/config. Solo se sincroniza lo de sync_list.
+# Se copia a /srv/ziegel/onedrive-conf/config. La carpeta se elige con --single-directory (docker-compose.yml).
 sync_dir = "/onedrive/data"
 # Mínimo que permite el cliente: 300 s (lo que cambia en las PCs baja en ≤5 min; lo del servidor sube al instante).
 monitor_interval = "300"
