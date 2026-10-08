@@ -318,6 +318,29 @@ export default function SettingsPage() {
           </div>
         )}
 
+        {/* Control Ventas (contenedor opcional: se actualiza con el mismo botón) */}
+        {updateInfo?.controlventas && (
+          <div className="glass-card p-3 space-y-1 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Control Ventas</span>
+              <span className="font-mono text-xs">
+                v{updateInfo.controlventas.version} · {updateInfo.controlventas.commit}
+              </span>
+            </div>
+            {updateInfo.controlventas.up_to_date === true && (
+              <div className="text-xs text-emerald-400">Al día</div>
+            )}
+            {updateInfo.controlventas.up_to_date === false && (
+              <div className="text-xs text-amber-400">
+                Hay una versión nueva{updateInfo.controlventas.latest_message ? `: ${updateInfo.controlventas.latest_message}` : ""} — se instala con «Actualizar»
+              </div>
+            )}
+            {updateInfo.controlventas.up_to_date == null && (
+              <div className="text-xs text-muted-foreground">«Actualizar» también lo pone al día</div>
+            )}
+          </div>
+        )}
+
         {/* Error */}
         {updateError && (
           <div className="flex items-center gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-2.5">

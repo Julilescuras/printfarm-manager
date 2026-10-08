@@ -41,7 +41,37 @@ _update_log: list[str] = []
 
 # ─── Public API ──────────────────────────────────────────────────────────────
 
+CONTROLVENTAS_VERSION_URL = "http://controlventas:3000/api/version"
+
+
+async def _controlventas_version() -> Optional[dict]:
+    """Versión de Control Ventas (contenedor opcional del mismo compose). None si no está."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(CONTROLVENTAS_VERSION_URL)
+            if resp.status_code != 200:
+                return None
+            d = resp.json()
+            latest = d.get("latest") or {}
+            return {
+                "version": d.get("version"),
+                "commit": d.get("commit"),
+                "latest_commit": (latest.get("commit") or "")[:7] or None,
+                "latest_message": latest.get("message"),
+                "up_to_date": d.get("upToDate"),
+            }
+    except Exception:
+        return None
+
+
 async def check_for_updates() -> dict:
+    """PrintFarm (GitHub) + versión de Control Ventas si está instalado."""
+    result = await _check_printfarm()
+    result["controlventas"] = await _controlventas_version()
+    return result
+
+
+async def _check_printfarm() -> dict:
     """Query GitHub for the latest commit on main and compare with installed."""
     installed_sha = _read_installed_sha()
 

@@ -133,10 +133,12 @@ services:
     environment:
       - CONTROLVENTAS_MODE=server
       - CONTROLVENTAS_ROOT=/catalogo/dieseños 2026
-      - CONTROLVENTAS_ALLOWED_HOSTS=${CV_ALLOWED_HOSTS:-192.168.20.25,100.126.215.99}
+      - CONTROLVENTAS_ALLOWED_HOSTS=${CV_ALLOWED_HOSTS:-192.168.20.25,100.126.215.99},controlventas
       - CONTROLVENTAS_PRINTFARM_URL=http://backend:8000
       - CONTROLVENTAS_PRINTFARM_TOKEN=${CONTROLVENTAS_PRINTFARM_TOKEN:-}
       - CONTROLVENTAS_ONEDRIVE_LOG=${CV_ONEDRIVE_LOG:-}
+      # Opcional: token de GitHub de solo lectura (Contents: read) para avisar de versiones nuevas de Control Ventas.
+      - CONTROLVENTAS_GITHUB_TOKEN=${CONTROLVENTAS_GITHUB_TOKEN:-}
       - TZ=America/Argentina/Buenos_Aires
     volumes:
       - /srv/ziegel/OneDrive/3D/Diseños:/catalogo
