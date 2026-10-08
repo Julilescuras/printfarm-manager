@@ -43,3 +43,6 @@ backend/check_db.py
 PROYECTO.md
 GUIA_DEPLOY.md
 *.txt
+
+# Generado por Next.js
+next-env.d.ts
