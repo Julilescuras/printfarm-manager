@@ -148,6 +148,18 @@ async def apply_update():
         raise HTTPException(status_code=503, detail=str(exc))
 
 
+@router.post("/restart-all")
+async def restart_all():
+    """DANGER: flag the host watchdog to tear down and recreate the whole Docker
+    stack (everything except Tailscale, which lives on the host). Triggered from
+    the 'Zona peligrosa' in Configuración with explicit confirmation."""
+    from app.services.updater import request_full_restart
+    try:
+        return request_full_restart()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+
 @router.get("/update-status")
 async def update_status():
     """Return the current update log and whether an update is in progress."""

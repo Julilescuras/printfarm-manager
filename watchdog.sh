@@ -16,8 +16,17 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 FLAG="$SCRIPT_DIR/backend/data/.update_requested"
 LOG="$SCRIPT_DIR/backend/data/update.log"
 
+RESTART_FLAG="$SCRIPT_DIR/backend/data/.restart_requested"
+
 if [ -f "$FLAG" ]; then
     echo "$(date): actualización solicitada desde el frontend, ejecutando update.sh..." >> "$LOG"
     cd "$SCRIPT_DIR" && bash update.sh >> "$LOG" 2>&1
     echo "$(date): update.sh finalizó con código $?." >> "$LOG"
+elif [ -f "$RESTART_FLAG" ]; then
+    # A diferencia del update, la banderita se borra ANTES de reiniciar: si el
+    # reinicio falla no queremos un loop de reinicios cada minuto.
+    rm -f "$RESTART_FLAG"
+    echo "$(date): reinicio total solicitado desde el frontend, ejecutando restart.sh..." >> "$LOG"
+    cd "$SCRIPT_DIR" && bash restart.sh >> "$LOG" 2>&1
+    echo "$(date): restart.sh finalizó con código $?." >> "$LOG"
 fi

@@ -24,6 +24,7 @@ from app.version import APP_VERSION
 logger = logging.getLogger("printfarm.updater")
 GITHUB_REPO = "julilescuras/printfarm-manager"
 UPDATE_FLAG_FILE = Path("/app/data/.update_requested")
+RESTART_FLAG_FILE = Path("/app/data/.restart_requested")
 INSTALLED_COMMIT_FILE = Path("/app/data/installed_commit.txt")
 
 IMAGES = {
@@ -139,6 +140,26 @@ async def apply_update() -> dict:
         "message": (
             "Actualización iniciada. El frontend se reiniciará en ~30s, "
             "el backend en ≤60s."
+        ),
+    }
+
+
+def request_full_restart() -> dict:
+    """Ask the host watchdog to run restart.sh (docker compose down + up of the
+    whole stack). We can't do it from here: it would kill this very process."""
+    if _update_in_progress or UPDATE_FLAG_FILE.exists():
+        return {"status": "busy", "message": "Hay una actualización en curso; esperá a que termine."}
+    try:
+        RESTART_FLAG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        RESTART_FLAG_FILE.touch()
+    except OSError as exc:
+        raise RuntimeError(f"No se pudo escribir el flag de reinicio: {exc}") from exc
+    logger.warning("[Updater] Reinicio total solicitado desde Configuración")
+    return {
+        "status": "started",
+        "message": (
+            "Reinicio total solicitado. En menos de 1 minuto se detiene todo y "
+            "vuelve en ~1-2 minutos. Después recargá la página."
         ),
     }
 

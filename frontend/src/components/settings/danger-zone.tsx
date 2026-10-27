@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   ChevronDown,
   Loader2,
+  Power,
   Trash2,
   RotateCcw,
   X,
@@ -116,7 +117,7 @@ function ConfirmModal({
 
 export function DangerZone() {
   const [open, setOpen] = useState(false);
-  const [modal, setModal] = useState<null | "reset" | "purge">(null);
+  const [modal, setModal] = useState<null | "reset" | "purge" | "restart">(null);
 
   return (
     <div className="glass-card p-6 space-y-4 border-red-500/20">
@@ -172,6 +173,23 @@ export function DangerZone() {
               <Trash2 className="w-3.5 h-3.5" /> Vaciar
             </button>
           </div>
+
+          {/* Full stack restart */}
+          <div className="flex items-center justify-between gap-4 p-3 rounded-lg bg-secondary/40 border border-border">
+            <div className="min-w-0">
+              <p className="text-sm font-medium">Reinicio total del sistema</p>
+              <p className="text-xs text-muted-foreground">
+                Baja y recrea desde cero todos los servicios (Manager, Spoolman,
+                Control Ventas, OneDrive). Tailscale no se toca. Los datos se conservan.
+              </p>
+            </div>
+            <button
+              onClick={() => setModal("restart")}
+              className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-red-400 border border-red-500/30 hover:bg-red-500/10 transition-colors"
+            >
+              <Power className="w-3.5 h-3.5" /> Reiniciar todo
+            </button>
+          </div>
         </div>
       )}
 
@@ -205,6 +223,25 @@ export function DangerZone() {
           confirmWord="VACIAR"
           actionLabel="Vaciar G-codes ahora"
           onConfirm={() => api.purgeGcodes()}
+          onClose={() => setModal(null)}
+        />
+      )}
+
+      {modal === "restart" && (
+        <ConfirmModal
+          title="Reinicio total"
+          description={
+            <>
+              Se van a <strong>detener y recrear</strong> todos los contenedores:
+              Manager, Spoolman, Control Ventas y OneDrive. La app queda caída
+              ~1-3 minutos. Las impresiones en curso <strong>siguen</strong> (corren
+              en cada impresora) y no se pierde ningún dato. Tailscale no se
+              reinicia, así que el acceso remoto se mantiene.
+            </>
+          }
+          confirmWord="REINICIAR TODO"
+          actionLabel="Reiniciar todo ahora"
+          onConfirm={() => api.restartAll()}
           onClose={() => setModal(null)}
         />
       )}

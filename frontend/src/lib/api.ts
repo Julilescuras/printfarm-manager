@@ -358,6 +358,7 @@ export const api = {
   checkUpdate: () => apiFetch<any>("/api/settings/update-check"),
   applyUpdate: () => apiFetch<any>("/api/settings/update-apply", { method: "POST" }),
   getUpdateStatus: () => apiFetch<any>("/api/settings/update-status"),
+  restartAll: () => apiFetch<any>("/api/settings/restart-all", { method: "POST" }),
 
   // System
   getSystemStatus: () => apiFetch<any>("/api/status"),
