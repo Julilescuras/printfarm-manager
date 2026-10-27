@@ -199,6 +199,7 @@ class MoonrakerClient:
                 if klippy_state in ("error", "shutdown"):
                     logger.warning(f"[Printer {self.printer_id}] Klipper is in error state on connect")
                     await self._update_printer_db(status="error")
+                    self._fail_inflight_job()
                 elif klippy_state == "disconnected":
                     logger.warning(f"[Printer {self.printer_id}] Klipper is disconnected on connect")
                     await self._update_printer_db(status="offline")
@@ -216,10 +217,20 @@ class MoonrakerClient:
         elif method == "notify_klippy_shutdown":
             logger.warning(f"[Printer {self.printer_id}] Klipper shutdown")
             await self._update_printer_db(status="error")
+            self._fail_inflight_job()
 
         elif method == "notify_klippy_disconnected":
             logger.warning(f"[Printer {self.printer_id}] Klipper disconnected")
             await self._update_printer_db(status="offline")
+
+    def _fail_inflight_job(self):
+        """A Klipper shutdown/error kills any running print, so close the
+        in-flight job as failed right away. Otherwise, once Klipper restarts and
+        reports 'standby', reconcile_stale_jobs sees a printer that is no longer
+        printing the file and books the job as COMPLETED. Idempotent: no-op when
+        the printer has no 'printing' job."""
+        from app.services.dispatcher import dispatcher
+        asyncio.create_task(dispatcher.on_print_aborted(self.printer_id, "failed"))
 
     async def _process_status_update(self, status_data: dict):
         """Process a notify_status_update with changed printer object fields."""
@@ -752,7 +763,8 @@ class MoonrakerClient:
                         )
                         return False
         except Exception as e:
-            logger.error(f"[Printer {self.printer_id}] Upload error: {e}")
+            # type name too: httpx timeouts/disconnects have an empty str(e)
+            logger.error(f"[Printer {self.printer_id}] Upload error: {type(e).__name__}: {e}")
             return False
 
     async def start_print(self, filename: str) -> bool:
